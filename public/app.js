@@ -35,6 +35,15 @@
   const iframe1 = $('#iframe1');
   const iframe2 = $('#iframe2');
   const swipeHandle = $('#swipeHandle');
+  // Inline offset controls
+  const offsetCtrlA = $('#offsetCtrlA');
+  const offsetCtrlB = $('#offsetCtrlB');
+  const offsetAUp = $('#offsetAUp');
+  const offsetADown = $('#offsetADown');
+  const offsetBUp = $('#offsetBUp');
+  const offsetBDown = $('#offsetBDown');
+  const offsetAVal = $('#offsetAVal');
+  const offsetBVal = $('#offsetBVal');
 
   const sbsView = $('#sbsView');
   const sbs1 = $('#sbs1');
@@ -163,6 +172,11 @@
     opacityField.style.display = isOverlay && om === 'onion' ? '' : 'none';
     swipeField.style.display = isOverlay && om === 'swipe' ? '' : 'none';
     if (interactField) interactField.style.display = isOverlay ? '' : 'none';
+    // Toggle inline offset controls
+    if (offsetCtrlA && offsetCtrlB) {
+      offsetCtrlA.style.display = isOverlay ? '' : 'none';
+      offsetCtrlB.style.display = isOverlay ? '' : 'none';
+    }
 
     overlayView.classList.toggle('mode-onion', isOverlay && om === 'onion');
     overlayView.classList.toggle('mode-swipe', isOverlay && om === 'swipe');
@@ -200,18 +214,21 @@
       swipeHandle.style.display = 'none';
     }
 
-    // vertical offsets: handled as initial scroll inside iframes to avoid flicker
-    wrap1.style.transform = '';
-    wrap2.style.transform = '';
+    // vertical offsets: apply as visual transforms so sync remains intact
+    const o1 = Number(offset1.value) || 0;
+    const o2 = Number(offset2.value) || 0;
+    wrap1.style.transform = `translateY(${o1}px)`;
+    wrap2.style.transform = `translateY(${o2}px)`;
+    if (offsetAVal) offsetAVal.textContent = `${o1} px`;
+    if (offsetBVal) offsetBVal.textContent = `${o2} px`;
   }
 
   // Apply initial starting positions inside iframes
   // This happens once on load; sync stays active after
   function applyInitialStarts() {
+    // Only apply selector start jumps here; visual offsets handled by CSS transforms
     const o1 = Number(offset1.value) || 0;
     const o2 = Number(offset2.value) || 0;
-
-    console.log('[Offset] Applying offsets:', { o1, o2 });
 
     const mode = compareMode.value;
     const isOverlay = mode === 'overlay';
@@ -237,40 +254,14 @@
       }
     };
 
+    // Only handle selectors here; offsets are visual transforms (updateOverlayStyles)
     if (interactive) {
-      // Scroll leader and mirror the same delta to follower to ensure initial alignment
       const leaderWin = ioVal === 'a' ? win1 : win2;
-      const followerWin = ioVal === 'a' ? win2 : win1;
       const sel = ioVal === 'a' ? startSel1 : startSel2;
-      const off = ioVal === 'a' ? o1 : o2;
-      const y = Math.abs(off);
-
-      if (sel) {
-        sendTo(leaderWin, { type: 'SCROLL_TO_SELECTOR', selector: sel, offset: off }, 'leader (selector)');
-      }
-      if (y > 0) {
-        // Mirror relative scroll to follower immediately; onMessage keeps them in lockstep afterwards
-        sendTo(leaderWin, { type: 'SYNC_SCROLL_BY', dy: y }, 'leader');
-        sendTo(followerWin, { type: 'SYNC_SCROLL_BY', dy: y }, 'follower');
-      }
+      if (sel) sendTo(leaderWin, { type: 'SCROLL_TO_SELECTOR', selector: sel, offset: ioVal === 'a' ? o1 : o2 }, 'leader (selector)');
     } else {
-      // Non-interactive overlay or side-by-side: set both independently
-      const y1 = Math.abs(o1);
-      const y2 = Math.abs(o2);
-      
-      if (startSel1) {
-        sendTo(win1, { type: 'SCROLL_TO_SELECTOR', selector: startSel1, offset: o1 }, 'URL A (selector)');
-      } else if (o1 !== 0) {
-        // Use SCROLL_BY for better compatibility
-        sendTo(win1, { type: 'SYNC_SCROLL_BY', dy: o1 > 0 ? y1 : -y1 }, 'URL A');
-      }
-      
-      if (startSel2) {
-        sendTo(win2, { type: 'SCROLL_TO_SELECTOR', selector: startSel2, offset: o2 }, 'URL B (selector)');
-      } else if (o2 !== 0) {
-        // Use SCROLL_BY for better compatibility  
-        sendTo(win2, { type: 'SYNC_SCROLL_BY', dy: o2 > 0 ? y2 : -y2 }, 'URL B');
-      }
+      if (startSel1) sendTo(win1, { type: 'SCROLL_TO_SELECTOR', selector: startSel1, offset: o1 }, 'URL A (selector)');
+      if (startSel2) sendTo(win2, { type: 'SCROLL_TO_SELECTOR', selector: startSel2, offset: o2 }, 'URL B (selector)');
     }
   }
 
@@ -526,25 +517,35 @@
       const useIframe = mode === 'iframe' || mode === 'proxy';
       
       if (useIframe) {
-        // When interact=none, overlay drives both iframes via wheel capture
-        // When interact=a/b, iframes handle wheel themselves and emit SCROLL_BY messages
+        // Overlay always listens to wheel to guarantee scrolling even when the leader is underneath
         const ioVal = interactMode ? interactMode.value : 'a';
         const interactive = ioVal !== 'none';
-        
+
+        function isInside(el, x, y) {
+          if (!el) return false;
+          const r = el.getBoundingClientRect();
+          return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+        }
+
         function onWheel(e) {
           if (!iframe1.contentWindow || !iframe2.contentWindow) return;
-          e.preventDefault();
           const dy = e.deltaY || 0;
+
+          if (interactive) {
+            // If the pointer is inside the interactive iframe, let it handle scrolling natively
+            const x = e.clientX, y = e.clientY;
+            const insideLeader = (ioVal === 'a' && isInside(iframe1, x, y)) || (ioVal === 'b' && isInside(iframe2, x, y));
+            if (insideLeader) return; // allow native scroll in leader
+          }
+
+          // Otherwise, prevent default and drive both
+          e.preventDefault();
           try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
           try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
         }
-        
-        // Only attach overlay wheel listener when interact=none
-        // When interact=a/b, iframes have pointer-events and will handle wheel themselves
+
         overlayView.removeEventListener('wheel', onWheel, { passive: false });
-        if (!interactive) {
-          overlayView.addEventListener('wheel', onWheel, { passive: false });
-        }
+        overlayView.addEventListener('wheel', onWheel, { passive: false });
 
         // Listen for messages from iframes (scroll position updates and wheel events)
         function onMessage(e) {
@@ -608,10 +609,32 @@
   function attachEvents() {
     let renderTimer = null;
     const requestRender = () => { if (renderTimer) clearTimeout(renderTimer); renderTimer = setTimeout(() => render(), 120); };
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, offset1, offset2, interactMode]
+    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, interactMode]
       .forEach((el) => el.addEventListener('change', requestRender));
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, offset1, offset2, interactMode]
+    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, interactMode]
       .forEach((el) => el.addEventListener('input', requestRender));
+    // Offsets update instantly without full re-render
+    if (offset1) {
+      offset1.addEventListener('input', () => { updateOverlayStyles(); writeParams(); });
+      offset1.addEventListener('change', () => { updateOverlayStyles(); writeParams(); });
+    }
+    if (offset2) {
+      offset2.addEventListener('input', () => { updateOverlayStyles(); writeParams(); });
+      offset2.addEventListener('change', () => { updateOverlayStyles(); writeParams(); });
+    }
+    // Inline offset controls (overlay): step 10px
+    const step = 1;
+    function bumpOffset(which, delta) {
+      const el = which === 'a' ? offset1 : offset2;
+      const val = Number(el.value) || 0;
+      el.value = String(val + delta);
+      updateOverlayStyles();
+      writeParams();
+    }
+    if (offsetAUp) offsetAUp.addEventListener('click', () => bumpOffset('a', -step));
+    if (offsetADown) offsetADown.addEventListener('click', () => bumpOffset('a', step));
+    if (offsetBUp) offsetBUp.addEventListener('click', () => bumpOffset('b', -step));
+    if (offsetBDown) offsetBDown.addEventListener('click', () => bumpOffset('b', step));
     [opacity, swipe].forEach((el) => el.addEventListener('input', () => { updateOverlayStyles(); }));
     refreshBtn.addEventListener('click', (e) => { e.preventDefault(); requestRender(); });
 

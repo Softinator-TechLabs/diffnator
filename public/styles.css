@@ -414,6 +414,43 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: auto !important;
 }
 
+/* Offset controls (overlay only) */
+.offset-controls {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border-color);
+  padding: 10px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  z-index: 1200;
+  user-select: none;
+}
+.offset-controls.left { left: 16px; }
+.offset-controls.right { right: 16px; }
+.offset-controls .offset-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 16px;
+  cursor: pointer;
+}
+.offset-controls .offset-btn:hover { background: var(--bg-hover); }
+.offset-controls .offset-val { 
+  min-width: 60px; 
+  text-align: center; 
+  font-size: 12px; 
+  color: var(--text-secondary);
+}
+
 .img-wrapper img { 
   object-fit: contain; 
   object-position: top left; 
