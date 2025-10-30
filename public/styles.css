@@ -393,6 +393,13 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: auto;
 }
 
+/* In overlay mode, capture wheel/touch at the parent and forward to iframes
+   via postMessage. Disable pointer events on iframes so scrolling works when
+   the mouse is over the viewport (consistent UX). */
+.overlay .img-wrapper iframe {
+  pointer-events: none !important;
+}
+
 .img-wrapper img { 
   object-fit: contain; 
   object-position: top left; 

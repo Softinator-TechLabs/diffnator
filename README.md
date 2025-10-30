@@ -9,6 +9,8 @@ A powerful, local-first web application for pixel-perfect comparison of websites
 
 ## ✨ Features
 
+> Status: Only the Live (proxy) + Overlay mode is fully tested and recommended right now. Other modes (Live iframe, Screenshot; Side-by-side) are available and generally work, but are considered experimental.
+
 ### 🎭 Three Rendering Modes
 - **Live (iframe)**: Direct iframe embedding for `localhost` and `file://` URLs
 - **Live (proxy)**: Server-side proxy to bypass X-Frame-Options restrictions
@@ -106,6 +108,10 @@ npm run health     # Check if server is running
 - **Difference Blend**: See visual differences highlighted
 
 ### Keyboard Shortcuts
+### Scrolling in Overlay (Important)
+- In Overlay with Live (proxy), the parent view captures the scroll and forwards it to both pages for perfect sync.
+- You can scroll directly while your mouse is over the viewport.
+- Interactions (click/hover) inside the pages are intentionally disabled in Overlay to keep scrolling consistent. Switch to Side-by-side or Live (iframe) if you need interactivity.
 - Click **☰** button to toggle control drawer
 - Drag swipe handle in overlay mode
 
