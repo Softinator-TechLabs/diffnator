@@ -609,9 +609,9 @@
   function attachEvents() {
     let renderTimer = null;
     const requestRender = () => { if (renderTimer) clearTimeout(renderTimer); renderTimer = setTimeout(() => render(), 120); };
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, interactMode]
+    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, interactMode]
       .forEach((el) => el.addEventListener('change', requestRender));
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, interactMode]
+    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, interactMode]
       .forEach((el) => el.addEventListener('input', requestRender));
     // Offsets update instantly without full re-render
     if (offset1) {
@@ -664,7 +664,7 @@
     addHoldRepeat(offsetADown, 'a', step);
     addHoldRepeat(offsetBUp, 'b', -step);
     addHoldRepeat(offsetBDown, 'b', step);
-    [opacity, swipe].forEach((el) => el.addEventListener('input', () => { updateOverlayStyles(); }));
+    [opacity, swipe].forEach((el) => el.addEventListener('input', () => { updateOverlayStyles(); writeParams(); }));
     refreshBtn.addEventListener('click', (e) => { e.preventDefault(); requestRender(); });
 
     // Drawer toggle (burger/close)
