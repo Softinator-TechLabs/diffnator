@@ -47,7 +47,10 @@ body {
 
 html, body {
   height: 100%;
-  overflow: hidden; /* avoid double vertical scrollbars; views manage their own scroll */
+  width: 100%;
+  overflow: hidden; /* iframes handle their own scroll; we sync via events */
+  margin: 0;
+  padding: 0;
 }
 
 /* Header with Gradient */
@@ -357,9 +360,9 @@ input[type="range"]::-moz-range-thumb {
   justify-content: center; 
   padding: var(--space-xl);
   background: var(--bg-primary);
-  /* Always provide a scroll container for overlay view */
+  /* No outer scroll - iframes scroll internally */
   height: 100vh;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .overlay .canvas {
@@ -474,15 +477,15 @@ input[type="range"]::-moz-range-thumb {
   display: flex; 
   gap: 0;
   background: var(--bg-primary);
-  /* Single global scrollbar */
+  /* Fill viewport, columns scroll internally */
   height: 100vh;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .sbs-col { 
   flex: 1; 
-  overflow: visible; /* avoid double scrollbars */
-  height: auto;
+  overflow: auto; /* each column scrolls independently */
+  height: 100%;
   scrollbar-width: thin;
   scrollbar-color: var(--accent-primary) var(--bg-tertiary);
 }
