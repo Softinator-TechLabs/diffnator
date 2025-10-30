@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+# Note: package-lock.json is intentionally tracked for reproducible builds
+
+# Logs
+*.log
+npm-debug.log*
+/tmp/
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Server artifacts
+*.pid
+

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DiffNator - The Ultimate Visual Comparison Tool</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <button id="toggleDrawer" class="drawer-toggle" title="Toggle Controls">☰</button>
+
+    <section class="controls toolbar collapsed" id="controlsDrawer">
+      <button id="closeDrawer" class="drawer-close" title="Close Controls">×</button>
+      <div id="notice" class="notice" style="display:none;"></div>
+
+      <div class="field url">
+        <label for="url1">URL A</label>
+        <input id="url1" type="text" placeholder="https://example.com or /path/to/file.html" value="https://example.com" />
+      </div>
+
+      <div class="field url">
+        <label for="url2">URL B</label>
+        <input id="url2" type="text" placeholder="https://example.com or /path/to/file.html" value="http://localhost:3000" />
+      </div>
+
+      <div class="field">
+        <label for="renderMode">Render</label>
+        <select id="renderMode">
+          <option value="iframe">Live (iframe)</option>
+          <option value="proxy" selected>Live (proxy)</option>
+          <option value="screenshot">Screenshot</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="compareMode">Mode</label>
+        <select id="compareMode">
+          <option value="overlay" selected>Overlay</option>
+          <option value="sbs">Side-by-side</option>
+        </select>
+      </div>
+
+      <div class="field" id="overlayModeField">
+        <label for="overlayMode">Overlay</label>
+        <select id="overlayMode">
+          <option value="onion" selected>Onion (opacity)</option>
+          <option value="swipe">Swipe</option>
+          <option value="blend">Blend (difference)</option>
+        </select>
+      </div>
+
+      <div class="field" id="opacityField">
+        <label for="opacity">Opacity</label>
+        <input id="opacity" type="range" min="0" max="100" value="60" />
+      </div>
+
+      <div class="field" id="swipeField" style="display:none;">
+        <label for="swipe">Swipe</label>
+        <input id="swipe" type="range" min="0" max="100" value="50" />
+      </div>
+
+      <div class="field">
+        <label for="widthSlider">Width <span id="widthValue">1440</span>px</label>
+        <input id="widthSlider" type="range" min="320" max="3840" value="1440" step="10" />
+      </div>
+
+      <div class="field small">
+        <label for="width">W</label>
+        <input id="width" type="number" min="200" max="4000" value="1440" />
+      </div>
+
+      <div class="field small">
+        <label for="dpr">DPR</label>
+        <select id="dpr">
+          <option value="1">1x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2" selected>2x</option>
+          <option value="3">3x</option>
+        </select>
+      </div>
+
+      <div class="field small">
+        <label for="wait">Wait</label>
+        <input id="wait" type="number" min="0" max="60000" value="2000" />
+      </div>
+
+      <div class="field small">
+        <label for="offset1">Off A</label>
+        <input id="offset1" type="number" value="0" />
+      </div>
+      <div class="field small">
+        <label for="offset2">Off B</label>
+        <input id="offset2" type="number" value="0" />
+      </div>
+
+      <div class="field align-end">
+        <button id="refreshBtn" class="primary">Refresh</button>
+      </div>
+    </section>
+
+    <section class="view">
+      <div id="overlayView" class="overlay">
+        <div class="canvas" id="overlayCanvas" style="--canvas-width: 1440px; --canvas-height: 900px;">
+          <div class="img-wrapper bottom" id="wrap1">
+            <img id="img1" alt="First screenshot" />
+            <iframe id="iframe1" style="display:none;" title="First page"></iframe>
+          </div>
+          <div class="img-wrapper top" id="wrap2">
+            <img id="img2" alt="Second screenshot" />
+            <iframe id="iframe2" style="display:none;" title="Second page"></iframe>
+          </div>
+          <div id="swipeHandle" class="swipe-handle" style="display:none;"></div>
+          <div id="foldLine" class="fold-line" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div id="sbsView" class="sbs" style="display:none;">
+        <div class="sbs-col">
+          <img id="sbs1" alt="First screenshot (SxS)" />
+          <iframe id="sbsIframe1" style="display:none;" title="First page (SxS)"></iframe>
+        </div>
+        <div class="sbs-col">
+          <img id="sbs2" alt="Second screenshot (SxS)" />
+          <iframe id="sbsIframe2" style="display:none;" title="Second page (SxS)"></iframe>
+        </div>
+      </div>
+    </section>
+
+    
+
+    <script src="app.js"></script>
+  </body>
+  </html>
+
+

@@ -1,0 +1,48 @@
+{
+  "name": "diffnator",
+  "version": "1.0.0",
+  "description": "🔥 DiffNator - The ultimate visual website comparison tool with live iframe, proxy, and screenshot modes. Perfect for visual regression testing and pixel-perfect comparisons.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "dev:visible": "HEADLESS=false node server.js",
+    "stop": "pkill -f 'node.*server.js' || true",
+    "restart": "npm run stop && sleep 2 && npm start",
+    "test": "echo 'No tests yet. Run npm start and test manually at http://localhost:8080'",
+    "health": "curl -s http://localhost:8080/health | json_pp || curl -s http://localhost:8080/health"
+  },
+  "keywords": [
+    "visual-testing",
+    "visual-regression",
+    "diff",
+    "pixel-perfect",
+    "comparison-tool",
+    "screenshot",
+    "puppeteer",
+    "iframe",
+    "proxy",
+    "web-development",
+    "qa-tools",
+    "responsive-design"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Softinator-TechLabs/diffnator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Softinator-TechLabs/diffnator/issues"
+  },
+  "homepage": "https://github.com/Softinator-TechLabs/diffnator#readme",
+  "author": "Softinator TechLabs",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "puppeteer": "^23.7.0"
+  }
+}
+
