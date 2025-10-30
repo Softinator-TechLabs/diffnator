@@ -318,19 +318,15 @@
       if (useIframe) {
         // For iframes, use postMessage to sync scrolling
         function onMessage(e) {
-          const d = e && e.data || {};
-          if (d && d.type === 'SCROLL_POS') {
-            // When one iframe scrolls, update the other
-            try {
-              if (sbsIframe1.contentWindow !== e.source && sbsIframe1.contentWindow) {
-                sbsIframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*');
-              }
-            } catch (_) {}
-            try {
-              if (sbsIframe2.contentWindow !== e.source && sbsIframe2.contentWindow) {
-                sbsIframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*');
-              }
-            } catch (_) {}
+          const d = (e && e.data) || {};
+          if (!d || !d.type) return;
+          // When one iframe scrolls, update the other
+          if (d.type === 'SCROLL_POS') {
+            try { if (sbsIframe1.contentWindow !== e.source && sbsIframe1.contentWindow) sbsIframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*'); } catch (_) {}
+            try { if (sbsIframe2.contentWindow !== e.source && sbsIframe2.contentWindow) sbsIframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*'); } catch (_) {}
+          } else if (d.type === 'SCROLL_BY') {
+            try { if (sbsIframe1.contentWindow !== e.source && sbsIframe1.contentWindow) sbsIframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: d.dy || 0 }, '*'); } catch (_) {}
+            try { if (sbsIframe2.contentWindow !== e.source && sbsIframe2.contentWindow) sbsIframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: d.dy || 0 }, '*'); } catch (_) {}
           }
         }
         window.removeEventListener('message', onMessage);
@@ -374,8 +370,11 @@
       const useIframe = mode === 'iframe' || mode === 'proxy';
       
       if (useIframe) {
-        // Wheel/touch on overlayView -> send scroll-by to both iframes
+        // When interact=none, overlay drives both iframes via wheel capture
+        // When interact=a/b, iframes handle wheel themselves and emit SCROLL_BY messages
+        const ioVal = interactMode ? interactMode.value : 'a';
         const interactive = ioVal !== 'none';
+        
         function onWheel(e) {
           if (!iframe1.contentWindow || !iframe2.contentWindow) return;
           e.preventDefault();
@@ -383,17 +382,40 @@
           try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
           try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
         }
+        
+        // Only attach overlay wheel listener when interact=none
+        // When interact=a/b, iframes have pointer-events and will handle wheel themselves
         overlayView.removeEventListener('wheel', onWheel, { passive: false });
         if (!interactive) {
           overlayView.addEventListener('wheel', onWheel, { passive: false });
         }
 
-        // When one iframe scrolls (emits SCROLL_POS), forward to the other to keep aligned
+        // Listen for messages from iframes (scroll position updates and wheel events)
         function onMessage(e) {
-          const d = e && e.data || {};
-          if (d && d.type === 'SCROLL_POS') {
-            try { if (iframe1.contentWindow !== e.source) iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*'); } catch (_) {}
-            try { if (iframe2.contentWindow !== e.source) iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*'); } catch (_) {}
+          const d = (e && e.data) || {};
+          if (!d || !d.type) return;
+          
+          const sourceId = e.source === iframe1.contentWindow ? 'A' : e.source === iframe2.contentWindow ? 'B' : '?';
+          
+          // If overlay is driving (interact=none), ignore iframe messages
+          if (!interactive) return;
+
+          // Only treat the interactive iframe as the leader; ignore follower-origin events
+          const leaderWin = ioVal === 'a' ? iframe1.contentWindow : ioVal === 'b' ? iframe2.contentWindow : null;
+          const followerWin = ioVal === 'a' ? iframe2.contentWindow : ioVal === 'b' ? iframe1.contentWindow : null;
+          if (!leaderWin || !followerWin) return;
+          if (e.source !== leaderWin) return; // ignore follower-origin messages to avoid ping-pong
+
+          // Forward wheel deltas for smooth coupling
+          if (d.type === 'SCROLL_BY') {
+            try { followerWin.postMessage({ type: 'SYNC_SCROLL_BY', dy: d.dy || 0 }, '*'); } catch (_) {}
+            return;
+          }
+          
+          // Optionally align absolute position from leader (throttled by iframe script)
+          if (d.type === 'SCROLL_POS') {
+            try { followerWin.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*'); } catch (_) {}
+            return;
           }
         }
         window.removeEventListener('message', onMessage);

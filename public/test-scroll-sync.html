@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Scroll Sync Test</title>
+  <style>
+    body { margin: 0; font-family: Arial; background: #0a0a0f; color: white; }
+    .container { display: flex; height: 100vh; }
+    .panel { flex: 1; border: 2px solid #333; position: relative; }
+    iframe { width: 100%; height: 100%; border: none; }
+    .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; z-index: 100; }
+    .controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color: white; padding: 15px; border-radius: 8px; z-index: 1000; }
+    button { margin: 0 5px; padding: 8px 15px; cursor: pointer; }
+    .log { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 10px; border-radius: 5px; max-width: 400px; max-height: 300px; overflow: auto; font-size: 11px; font-family: monospace; z-index: 1000; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel">
+      <div class="label">URL A (localhost:3000)</div>
+      <iframe id="iframe1"></iframe>
+    </div>
+    <div class="panel">
+      <div class="label">URL B (Revolut file)</div>
+      <iframe id="iframe2"></iframe>
+    </div>
+  </div>
+  
+  <div class="controls">
+    <button onclick="setInteract('none')">Interact: None</button>
+    <button onclick="setInteract('a')">Interact: URL A</button>
+    <button onclick="setInteract('b')">Interact: URL B</button>
+    <span id="status" style="margin-left: 20px;">Current: None</span>
+  </div>
+  
+  <div class="log" id="log"></div>
+
+  <script>
+    const iframe1 = document.getElementById('iframe1');
+    const iframe2 = document.getElementById('iframe2');
+    const status = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    
+    let interactMode = 'none';
+    let messageLog = [];
+    
+    function log(msg) {
+      const timestamp = new Date().toLocaleTimeString();
+      messageLog.unshift(`[${timestamp}] ${msg}`);
+      if (messageLog.length > 30) messageLog.pop();
+      logEl.innerHTML = messageLog.join('<br>');
+    }
+    
+    // Load iframes with user's exact URLs
+    iframe1.src = '/proxy?url=' + encodeURIComponent('http://localhost:3000/');
+    iframe2.src = '/fileview?path=' + encodeURIComponent('file:///Users/suyogdixit/Downloads/testd/Revolut _ All-in-one finance app for your money _ Revolut United Kingdom.html');
+    
+    function setInteract(mode) {
+      interactMode = mode;
+      status.textContent = `Current: ${mode}`;
+      
+      iframe1.style.pointerEvents = (mode === 'none' || mode === 'a') ? 'auto' : 'none';
+      iframe2.style.pointerEvents = (mode === 'none' || mode === 'b') ? 'auto' : 'none';
+      
+      log(`Interact mode: ${mode}`);
+    }
+    
+    // Listen for messages from iframes
+    window.addEventListener('message', (e) => {
+      const d = e && e.data || {};
+      if (!d || !d.type) return;
+      
+      const source = e.source === iframe1.contentWindow ? 'A' : 
+                     e.source === iframe2.contentWindow ? 'B' : '?';
+      
+      if (d.type === 'SCROLL_POS') {
+        log(`${source} → SCROLL_POS y=${Math.round(d.y)}`);
+        
+        // Forward to the other iframe
+        try {
+          if (iframe1.contentWindow !== e.source && iframe1.contentWindow) {
+            iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*');
+          }
+        } catch (_) {}
+        try {
+          if (iframe2.contentWindow !== e.source && iframe2.contentWindow) {
+            iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*');
+          }
+        } catch (_) {}
+      } else if (d.type === 'SCROLL_BY') {
+        log(`${source} → SCROLL_BY dy=${Math.round(d.dy)}`);
+        
+        // Forward to the other iframe
+        try {
+          if (iframe1.contentWindow !== e.source && iframe1.contentWindow) {
+            iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: d.dy || 0 }, '*');
+          }
+        } catch (_) {}
+        try {
+          if (iframe2.contentWindow !== e.source && iframe2.contentWindow) {
+            iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: d.dy || 0 }, '*');
+          }
+        } catch (_) {}
+      }
+    });
+    
+    // Initialize
+    setInteract('a');
+    log('Test loaded. Set to Interact=URL A. Scroll inside A to test sync.');
+    log('Open browser console (F12) to see [ScrollSync] messages from main app.');
+  </script>
+</body>
+</html>
