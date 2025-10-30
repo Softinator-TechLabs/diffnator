@@ -295,36 +295,62 @@
       
       if (!col1 || !col2) return;
       
-      function syncScroll1(e) {
-        if (!syncScrollEnabled) return;
-        syncScrollEnabled = false;
-        
-        requestAnimationFrame(() => {
-          col2.scrollTop = col1.scrollTop;
-          col2.scrollLeft = col1.scrollLeft;
-        });
-        
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => syncScrollEnabled = true, 50);
-      }
+      const mode = renderMode.value;
+      const useIframe = mode === 'iframe' || mode === 'proxy';
       
-      function syncScroll2(e) {
-        if (!syncScrollEnabled) return;
-        syncScrollEnabled = false;
+      if (useIframe) {
+        // For iframes, use postMessage to sync scrolling
+        function onMessage(e) {
+          const d = e && e.data || {};
+          if (d && d.type === 'SCROLL_POS') {
+            // When one iframe scrolls, update the other
+            try {
+              if (sbsIframe1.contentWindow !== e.source && sbsIframe1.contentWindow) {
+                sbsIframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*');
+              }
+            } catch (_) {}
+            try {
+              if (sbsIframe2.contentWindow !== e.source && sbsIframe2.contentWindow) {
+                sbsIframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*');
+              }
+            } catch (_) {}
+          }
+        }
+        window.removeEventListener('message', onMessage);
+        window.addEventListener('message', onMessage);
+      } else {
+        // For screenshots (images), sync column scrolling
+        function syncScroll1(e) {
+          if (!syncScrollEnabled) return;
+          syncScrollEnabled = false;
+          
+          requestAnimationFrame(() => {
+            col2.scrollTop = col1.scrollTop;
+            col2.scrollLeft = col1.scrollLeft;
+          });
+          
+          if (scrollTimeout) clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => syncScrollEnabled = true, 50);
+        }
         
-        requestAnimationFrame(() => {
-          col1.scrollTop = col2.scrollTop;
-          col1.scrollLeft = col2.scrollLeft;
-        });
+        function syncScroll2(e) {
+          if (!syncScrollEnabled) return;
+          syncScrollEnabled = false;
+          
+          requestAnimationFrame(() => {
+            col1.scrollTop = col2.scrollTop;
+            col1.scrollLeft = col2.scrollLeft;
+          });
+          
+          if (scrollTimeout) clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => syncScrollEnabled = true, 50);
+        }
         
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => syncScrollEnabled = true, 50);
+        col1.removeEventListener('scroll', syncScroll1);
+        col2.removeEventListener('scroll', syncScroll2);
+        col1.addEventListener('scroll', syncScroll1, { passive: true });
+        col2.addEventListener('scroll', syncScroll2, { passive: true });
       }
-      
-      col1.removeEventListener('scroll', syncScroll1);
-      col2.removeEventListener('scroll', syncScroll2);
-      col1.addEventListener('scroll', syncScroll1, { passive: true });
-      col2.addEventListener('scroll', syncScroll2, { passive: true });
     } else if (compareMode.value === 'overlay') {
       // Overlay: drive both iframes by messaging so their own scroll events/animations run
       const mode = renderMode.value;
