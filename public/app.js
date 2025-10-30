@@ -16,6 +16,9 @@
   const swipe = $('#swipe');
   const offset1 = $('#offset1');
   const offset2 = $('#offset2');
+  // Optional deep-link only: CSS selectors to start from
+  let startSel1 = '';
+  let startSel2 = '';
   const interactMode = $('#interactMode');
 
   const refreshBtn = $('#refreshBtn');
@@ -59,6 +62,9 @@
     if (p.has('swipe')) swipe.value = p.get('swipe');
     if (p.has('off1')) offset1.value = p.get('off1');
     if (p.has('off2')) offset2.value = p.get('off2');
+    // Optional deep link: start at CSS selector for each URL
+    if (p.has('sa')) startSel1 = p.get('sa') || '';
+    if (p.has('sb')) startSel2 = p.get('sb') || '';
     if (interactMode) {
       const ioParam = p.get('io');
       if (ioParam) {
@@ -194,11 +200,78 @@
       swipeHandle.style.display = 'none';
     }
 
-    // vertical offsets
+    // vertical offsets: handled as initial scroll inside iframes to avoid flicker
+    wrap1.style.transform = '';
+    wrap2.style.transform = '';
+  }
+
+  // Apply initial starting positions inside iframes
+  // This happens once on load; sync stays active after
+  function applyInitialStarts() {
     const o1 = Number(offset1.value) || 0;
     const o2 = Number(offset2.value) || 0;
-    wrap1.style.transform = `translateY(${o1}px)`;
-    wrap2.style.transform = `translateY(${o2}px)`;
+
+    console.log('[Offset] Applying offsets:', { o1, o2 });
+
+    const mode = compareMode.value;
+    const isOverlay = mode === 'overlay';
+    const win1 = isOverlay ? iframe1 : sbsIframe1;
+    const win2 = isOverlay ? iframe2 : sbsIframe2;
+
+    // Resolve interactive target (leader) for overlay; follower will sync from messages
+    const ioVal = interactMode ? interactMode.value : 'a';
+    const interactive = isOverlay && ioVal !== 'none';
+
+    // Helper send functions with logging
+    const sendTo = (win, msg, label) => { 
+      console.log(`[Offset] Sending to ${label}:`, msg);
+      try { 
+        if (win && win.contentWindow) {
+          win.contentWindow.postMessage(msg, '*');
+          console.log(`[Offset] Message sent to ${label}`);
+        } else {
+          console.warn(`[Offset] Cannot send to ${label}: iframe or contentWindow not ready`);
+        }
+      } catch(e) {
+        console.error(`[Offset] Error sending to ${label}:`, e);
+      }
+    };
+
+    if (interactive) {
+      // Scroll leader and mirror the same delta to follower to ensure initial alignment
+      const leaderWin = ioVal === 'a' ? win1 : win2;
+      const followerWin = ioVal === 'a' ? win2 : win1;
+      const sel = ioVal === 'a' ? startSel1 : startSel2;
+      const off = ioVal === 'a' ? o1 : o2;
+      const y = Math.abs(off);
+
+      if (sel) {
+        sendTo(leaderWin, { type: 'SCROLL_TO_SELECTOR', selector: sel, offset: off }, 'leader (selector)');
+      }
+      if (y > 0) {
+        // Mirror relative scroll to follower immediately; onMessage keeps them in lockstep afterwards
+        sendTo(leaderWin, { type: 'SYNC_SCROLL_BY', dy: y }, 'leader');
+        sendTo(followerWin, { type: 'SYNC_SCROLL_BY', dy: y }, 'follower');
+      }
+    } else {
+      // Non-interactive overlay or side-by-side: set both independently
+      const y1 = Math.abs(o1);
+      const y2 = Math.abs(o2);
+      
+      if (startSel1) {
+        sendTo(win1, { type: 'SCROLL_TO_SELECTOR', selector: startSel1, offset: o1 }, 'URL A (selector)');
+      } else if (o1 !== 0) {
+        // Use SCROLL_BY for better compatibility
+        sendTo(win1, { type: 'SYNC_SCROLL_BY', dy: o1 > 0 ? y1 : -y1 }, 'URL A');
+      }
+      
+      if (startSel2) {
+        sendTo(win2, { type: 'SCROLL_TO_SELECTOR', selector: startSel2, offset: o2 }, 'URL B (selector)');
+      } else if (o2 !== 0) {
+        // Use SCROLL_BY for better compatibility  
+        sendTo(win2, { type: 'SYNC_SCROLL_BY', dy: o2 > 0 ? y2 : -y2 }, 'URL B');
+      }
+    }
   }
 
   function render() {
@@ -241,8 +314,52 @@
         iframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
         iframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
         
+        // Track load state to apply offsets only after both are ready
+        let loaded = { a: false, b: false };
+        let offsetApplied = false;
+        
+        const tryApply = () => {
+          if (loaded.a && loaded.b && !offsetApplied) {
+            offsetApplied = true;
+            // Wait a bit longer to ensure injected scripts are ready
+            setTimeout(() => {
+              console.log('[Offset] Both iframes loaded, applying offsets...');
+              applyInitialStarts();
+            }, 600);
+          }
+        };
+        
+        // Check if iframes are already loaded (from previous render)
+        const checkIfReady = () => {
+          try {
+            if (iframe1.contentWindow && iframe1.contentWindow.document && iframe1.contentWindow.document.readyState === 'complete') {
+              loaded.a = true;
+            }
+            if (iframe2.contentWindow && iframe2.contentWindow.document && iframe2.contentWindow.document.readyState === 'complete') {
+              loaded.b = true;
+            }
+            tryApply();
+          } catch(_) {}
+        };
+        
+        // Set up load handlers
+        iframe1.onload = () => { 
+          console.log('[Offset] iframe1 loaded');
+          loaded.a = true; 
+          tryApply(); 
+        };
+        iframe2.onload = () => { 
+          console.log('[Offset] iframe2 loaded');
+          loaded.b = true; 
+          tryApply(); 
+        };
+        
+        // Set sources
         iframe1.src = src1;
         iframe2.src = src2;
+        
+        // Check immediately if already loaded
+        setTimeout(checkIfReady, 100);
       } else {
         // Show images (screenshots), hide iframes
         iframe1.style.display = 'none';
@@ -278,8 +395,47 @@
         sbsIframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
         sbsIframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
         
+        // Track load state to apply offsets only after both are ready
+        let loaded = { a: false, b: false };
+        let offsetApplied = false;
+        
+        const tryApply = () => {
+          if (loaded.a && loaded.b && !offsetApplied) {
+            offsetApplied = true;
+            setTimeout(() => {
+              console.log('[Offset] Both SBS iframes loaded, applying offsets...');
+              applyInitialStarts();
+            }, 600);
+          }
+        };
+        
+        const checkIfReady = () => {
+          try {
+            if (sbsIframe1.contentWindow && sbsIframe1.contentWindow.document && sbsIframe1.contentWindow.document.readyState === 'complete') {
+              loaded.a = true;
+            }
+            if (sbsIframe2.contentWindow && sbsIframe2.contentWindow.document && sbsIframe2.contentWindow.document.readyState === 'complete') {
+              loaded.b = true;
+            }
+            tryApply();
+          } catch(_) {}
+        };
+        
+        sbsIframe1.onload = () => { 
+          console.log('[Offset] sbsIframe1 loaded');
+          loaded.a = true; 
+          tryApply(); 
+        };
+        sbsIframe2.onload = () => { 
+          console.log('[Offset] sbsIframe2 loaded');
+          loaded.b = true; 
+          tryApply(); 
+        };
+        
         sbsIframe1.src = src1;
         sbsIframe2.src = src2;
+        
+        setTimeout(checkIfReady, 100);
       } else {
         sbsIframe1.style.display = 'none';
         sbsIframe2.style.display = 'none';
