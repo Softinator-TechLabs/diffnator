@@ -635,6 +635,35 @@
     if (offsetADown) offsetADown.addEventListener('click', () => bumpOffset('a', step));
     if (offsetBUp) offsetBUp.addEventListener('click', () => bumpOffset('b', -step));
     if (offsetBDown) offsetBDown.addEventListener('click', () => bumpOffset('b', step));
+
+    // Press-and-hold auto repeat for offset buttons
+    function addHoldRepeat(btn, which, delta) {
+      if (!btn) return;
+      let holdTimer = null;
+      let repeatTimer = null;
+      const start = (e) => {
+        e.preventDefault();
+        bumpOffset(which, delta); // immediate bump
+        // start repeating after short delay
+        holdTimer = setTimeout(() => {
+          repeatTimer = setInterval(() => bumpOffset(which, delta), 16); // ~60fps
+        }, 200);
+      };
+      const stop = () => {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
+      };
+      btn.addEventListener('mousedown', start);
+      btn.addEventListener('touchstart', start, { passive: false });
+      window.addEventListener('mouseup', stop);
+      window.addEventListener('mouseleave', stop);
+      window.addEventListener('touchend', stop);
+      window.addEventListener('touchcancel', stop);
+    }
+    addHoldRepeat(offsetAUp, 'a', -step);
+    addHoldRepeat(offsetADown, 'a', step);
+    addHoldRepeat(offsetBUp, 'b', -step);
+    addHoldRepeat(offsetBDown, 'b', step);
     [opacity, swipe].forEach((el) => el.addEventListener('input', () => { updateOverlayStyles(); }));
     refreshBtn.addEventListener('click', (e) => { e.preventDefault(); requestRender(); });
 
