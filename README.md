@@ -108,10 +108,12 @@ npm run health     # Check if server is running
 - **Difference Blend**: See visual differences highlighted
 
 ### Keyboard Shortcuts
-### Scrolling in Overlay (Important)
-- In Overlay with Live (proxy), the parent view captures the scroll and forwards it to both pages for perfect sync.
-- You can scroll directly while your mouse is over the viewport.
-- Interactions (click/hover) inside the pages are intentionally disabled in Overlay to keep scrolling consistent. Switch to Side-by-side or Live (iframe) if you need interactivity.
+### Overlay Scrolling & Interactivity
+- Default: Smooth synced scrolling in Live (proxy) overlay. You can scroll while your mouse is over the viewport.
+- Interact selector: choose who is interactive in overlay — `None`, `URL A (default)`, or `URL B`.
+- With `None`, overlay captures scroll and forwards to both pages (best for performance).
+- With `URL A` or `URL B`, clicks and inputs go to the selected page; the other still syncs scroll.
+- Note: In Live (iframe), interactivity/scroll sync may vary by site. Use Side‑by‑side for full interactivity across both pages simultaneously.
 - Click **☰** button to toggle control drawer
 - Drag swipe handle in overlay mode
 

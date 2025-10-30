@@ -24,7 +24,7 @@
         <input id="url2" type="text" placeholder="https://example.com or /path/to/file.html" value="http://localhost:3000" />
       </div>
 
-      <div class="field">
+      <div class="field render">
         <label for="renderMode">Render</label>
         <select id="renderMode">
           <option value="iframe">Live (iframe)</option>
@@ -33,7 +33,7 @@
         </select>
       </div>
 
-      <div class="field">
+      <div class="field mode">
         <label for="compareMode">Mode</label>
         <select id="compareMode">
           <option value="overlay" selected>Overlay</option>
@@ -60,7 +60,16 @@
         <input id="swipe" type="range" min="0" max="100" value="50" />
       </div>
 
-      <div class="field">
+      <div class="field interact" id="interactField" style="display:none;" title="Choose which page is interactive in overlay">
+        <label for="interactMode">Interact</label>
+        <select id="interactMode">
+          <option value="none">None</option>
+          <option value="a" selected>URL A (default)</option>
+          <option value="b">URL B</option>
+        </select>
+      </div>
+
+      <div class="field range">
         <label for="widthSlider">Width <span id="widthValue">1440</span>px</label>
         <input id="widthSlider" type="range" min="320" max="3840" value="1440" step="10" />
       </div>

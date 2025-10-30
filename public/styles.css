@@ -186,14 +186,14 @@ footer a:hover {
   top: var(--space-lg);
   right: var(--space-lg);
   z-index: 1000;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--space-md);
-  align-items: center;
-  flex-wrap: wrap; /* wrap instead of horizontal scroll */
+  align-items: end;
   overflow: visible;
   white-space: normal;
-  max-width: min(600px, 45vw);
-  max-height: min(70vh, 560px);
+  max-width: min(880px, 60vw);
+  max-height: min(72vh, 600px);
   padding: var(--space-md);
   background: rgba(21, 21, 32, 0.9);
   backdrop-filter: blur(8px);
@@ -202,12 +202,20 @@ footer a:hover {
   border: none; /* remove borders */
 }
 
-.controls.toolbar .field { display: inline-flex; align-items: center; gap: var(--space-sm); }
-.controls.toolbar label { display: inline-block; margin: 0 var(--space-xs) 0 0; font-size: 12px; }
-.controls.toolbar input[type="range"] { width: 160px; }
-.controls.toolbar #url1, .controls.toolbar #url2 { width: clamp(220px, 30vw, 480px); }
-.controls.toolbar .field.small input,
-.controls.toolbar .field.small select { width: 80px; }
+.controls.toolbar .field { display: block; }
+.controls.toolbar .field.url { grid-column: span 6; }
+.controls.toolbar .field.render { grid-column: span 6; }
+.controls.toolbar .field.mode { grid-column: span 6; }
+.controls.toolbar #overlayModeField { grid-column: span 6; }
+.controls.toolbar #opacityField { grid-column: span 6; }
+.controls.toolbar #swipeField { grid-column: span 6; }
+.controls.toolbar .field.interact { grid-column: span 6; }
+.controls.toolbar .field.range { grid-column: span 12; }
+.controls.toolbar .field.small { grid-column: span 2; }
+.controls.toolbar .field.align-end { grid-column: span 2; display: flex; align-items: end; }
+
+.controls.toolbar label { display: block; margin: 0 0 var(--space-xxs) 0; font-size: 12px; }
+.controls.toolbar input[type="range"] { width: 100%; }
 
 .controls.collapsed { 
   max-height: 0;
@@ -398,6 +406,12 @@ input[type="range"]::-moz-range-thumb {
    the mouse is over the viewport (consistent UX). */
 .overlay .img-wrapper iframe {
   pointer-events: none !important;
+}
+
+/* Toggle to allow interactions in overlay */
+.overlay.io-a #iframe1,
+.overlay.io-b #iframe2 {
+  pointer-events: auto !important;
 }
 
 .img-wrapper img { 

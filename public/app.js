@@ -16,6 +16,7 @@
   const swipe = $('#swipe');
   const offset1 = $('#offset1');
   const offset2 = $('#offset2');
+  const interactMode = $('#interactMode');
 
   const refreshBtn = $('#refreshBtn');
   const toggleDrawer = $('#toggleDrawer');
@@ -41,6 +42,7 @@
   const overlayModeField = $('#overlayModeField');
   const opacityField = $('#opacityField');
   const swipeField = $('#swipeField');
+  const interactField = $('#interactField');
   const notice = document.getElementById('notice');
 
   function readParams() {
@@ -57,6 +59,15 @@
     if (p.has('swipe')) swipe.value = p.get('swipe');
     if (p.has('off1')) offset1.value = p.get('off1');
     if (p.has('off2')) offset2.value = p.get('off2');
+    if (interactMode) {
+      const ioParam = p.get('io');
+      if (ioParam) {
+        const val = ioParam === '1' ? 'a' : ioParam; // backward compat for old boolean
+        interactMode.value = (val === 'a' || val === 'b' || val === 'none') ? val : 'a';
+      } else {
+        interactMode.value = 'a'; // default to URL A
+      }
+    }
   }
 
   function writeParams() {
@@ -73,6 +84,7 @@
     p.set('swipe', String(swipe.value));
     p.set('off1', String(offset1.value));
     p.set('off2', String(offset2.value));
+    if (interactMode) p.set('io', interactMode.value);
     const newUrl = `${location.pathname}?${p.toString()}`;
     history.replaceState(null, '', newUrl);
   }
@@ -144,6 +156,7 @@
     const om = overlayMode.value;
     opacityField.style.display = isOverlay && om === 'onion' ? '' : 'none';
     swipeField.style.display = isOverlay && om === 'swipe' ? '' : 'none';
+    if (interactField) interactField.style.display = isOverlay ? '' : 'none';
 
     overlayView.classList.toggle('mode-onion', isOverlay && om === 'onion');
     overlayView.classList.toggle('mode-swipe', isOverlay && om === 'swipe');
@@ -192,6 +205,10 @@
     writeParams();
     updateModeControls();
     updateOverlayStyles();
+    // Apply overlay interactivity setting
+    const ioVal = interactMode ? interactMode.value : 'a';
+    overlayView.classList.remove('io-none', 'io-a', 'io-b');
+    overlayView.classList.add(`io-${ioVal}`);
 
     // Set viewport width CSS variable
     const viewportWidth = width.value || 1440;
@@ -358,6 +375,7 @@
       
       if (useIframe) {
         // Wheel/touch on overlayView -> send scroll-by to both iframes
+        const interactive = ioVal !== 'none';
         function onWheel(e) {
           if (!iframe1.contentWindow || !iframe2.contentWindow) return;
           e.preventDefault();
@@ -366,7 +384,9 @@
           try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
         }
         overlayView.removeEventListener('wheel', onWheel, { passive: false });
-        overlayView.addEventListener('wheel', onWheel, { passive: false });
+        if (!interactive) {
+          overlayView.addEventListener('wheel', onWheel, { passive: false });
+        }
 
         // When one iframe scrolls (emits SCROLL_POS), forward to the other to keep aligned
         function onMessage(e) {
@@ -410,9 +430,9 @@
   function attachEvents() {
     let renderTimer = null;
     const requestRender = () => { if (renderTimer) clearTimeout(renderTimer); renderTimer = setTimeout(() => render(), 120); };
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, offset1, offset2]
+    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, offset1, offset2, interactMode]
       .forEach((el) => el.addEventListener('change', requestRender));
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, offset1, offset2]
+    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, opacity, swipe, offset1, offset2, interactMode]
       .forEach((el) => el.addEventListener('input', requestRender));
     [opacity, swipe].forEach((el) => el.addEventListener('input', () => { updateOverlayStyles(); }));
     refreshBtn.addEventListener('click', (e) => { e.preventDefault(); requestRender(); });
