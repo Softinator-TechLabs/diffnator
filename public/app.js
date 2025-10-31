@@ -61,6 +61,9 @@
   let screenshotScrollY = 0;
   let overlayWheelHandler = null;
   let overlayMessageHandler = null;
+  let lastOverlayForwardAt = 0;
+  let lastPosA = { x: 0, y: 0 };
+  let lastPosB = { x: 0, y: 0 };
 
   function readParams() {
     const p = new URLSearchParams(location.search);
@@ -372,6 +375,15 @@
         img1.onerror = () => showNotice(`❌ Screenshot failed for: ${u1}. Server may be down.`, true);
         img2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
         
+        // Show loading notice until both images load or error
+        showNotice('⏳ Loading screenshots...');
+        let shotLoaded = { a: false, b: false };
+        const maybeClear = () => { if (shotLoaded.a && shotLoaded.b) showNotice(''); };
+        img1.onload = () => { shotLoaded.a = true; updateOverlayStyles(); maybeClear(); };
+        img2.onload = () => { shotLoaded.b = true; updateOverlayStyles(); maybeClear(); };
+        img1.onerror = () => { shotLoaded.a = true; maybeClear(); };
+        img2.onerror = () => { shotLoaded.b = true; maybeClear(); };
+
         img1.src = u1 ? src1 : '';
         img2.src = u2 ? src2 : '';
 
@@ -380,10 +392,7 @@
         overlayCanvas.style.height = '100vh';
         updateOverlayStyles();
 
-        // Re-apply styles after images load to ensure correct sizing
-        const onImgLoad = () => updateOverlayStyles();
-        img1.onload = onImgLoad;
-        img2.onload = onImgLoad;
+        // note: onload already set above
       }
     } else {
       // Side-by-side
@@ -456,7 +465,13 @@
         // Add error handlers for screenshots
         sbs1.onerror = () => showNotice(`❌ Screenshot failed for: ${u1}. Server may be down.`, true);
         sbs2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
-        
+
+        showNotice('⏳ Loading screenshots...');
+        let sbsLoaded = { a: false, b: false };
+        const sbsMaybeClear = () => { if (sbsLoaded.a && sbsLoaded.b) showNotice(''); };
+        sbs1.onload = () => { sbsLoaded.a = true; sbsMaybeClear(); };
+        sbs2.onload = () => { sbsLoaded.b = true; sbsMaybeClear(); };
+
         sbs1.src = u1 ? src1 : '';
         sbs2.src = u2 ? src2 : '';
       }
@@ -549,17 +564,11 @@
           if (!iframe1.contentWindow || !iframe2.contentWindow) return;
           const dy = e.deltaY || 0;
 
-          if (interactive) {
-            // If the pointer is inside the interactive iframe, let it handle scrolling natively
-            const x = e.clientX, y = e.clientY;
-            const insideLeader = (ioVal === 'a' && isInside(iframe1, x, y)) || (ioVal === 'b' && isInside(iframe2, x, y));
-            if (insideLeader) return; // allow native scroll in leader
-          }
-
-          // Otherwise, prevent default and drive both
+          // Always drive both via messaging to avoid edge cases when switching interact leader
           e.preventDefault();
           try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
           try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
+          lastOverlayForwardAt = (window.performance && performance.now) ? performance.now() : Date.now();
         }
 
         if (overlayWheelHandler) overlayView.removeEventListener('wheel', overlayWheelHandler);
@@ -572,6 +581,11 @@
           if (!d || !d.type) return;
           
           const sourceId = e.source === iframe1.contentWindow ? 'A' : e.source === iframe2.contentWindow ? 'B' : '?';
+          // Track last known positions for both frames
+          if (d.type === 'SCROLL_POS') {
+            if (sourceId === 'A') { lastPosA = { x: d.x || 0, y: d.y || 0 }; }
+            if (sourceId === 'B') { lastPosB = { x: d.x || 0, y: d.y || 0 }; }
+          }
           
           // If overlay is driving (interact=none), ignore iframe messages
           if (!interactive) return;
@@ -584,13 +598,17 @@
 
           // Forward wheel deltas for smooth coupling
           if (d.type === 'SCROLL_BY') {
-            try { followerWin.postMessage({ type: 'SYNC_SCROLL_BY', dy: d.dy || 0 }, '*'); } catch (_) {}
+            // If we just forwarded via overlay wheel, skip duplicate
+            const now = (window.performance && performance.now) ? performance.now() : Date.now();
+            const dy = d.dy || 0;
+            if (!lastOverlayForwardAt || now - lastOverlayForwardAt > 40) {
+              try { followerWin.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
+            }
             return;
           }
           
-          // Optionally align absolute position from leader (throttled by iframe script)
+          // Ignore SCROLL_POS while in interactive mode to avoid ping-pong flicker
           if (d.type === 'SCROLL_POS') {
-            try { followerWin.postMessage({ type: 'SYNC_SCROLL_TO', x: d.x, y: d.y }, '*'); } catch (_) {}
             return;
           }
         }
@@ -622,6 +640,22 @@
         overlayCanvas.style.height = '100vh';
         wrap1.style.height = '100vh';
         wrap2.style.height = '100vh';
+
+        // After switching interact leader, ensure the target iframe is focused and responsive
+        // and nudge scroll by +1/-1 to "wake" scroll handlers without visible shift
+        setTimeout(() => {
+          try {
+            const currIo = interactMode ? interactMode.value : 'a';
+            const leaderFrame = currIo === 'a' ? iframe1 : currIo === 'b' ? iframe2 : null;
+            if (leaderFrame && leaderFrame.contentWindow) {
+              try { leaderFrame.contentWindow.focus(); } catch (_) {}
+              try { leaderFrame.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: 1 }, '*'); } catch (_) {}
+              setTimeout(() => {
+                try { leaderFrame.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: -1 }, '*'); } catch (_) {}
+              }, 30);
+            }
+          } catch (_) {}
+        }, 50);
       } else {
         // Overlay + Screenshot: emulate scrolling by translating images together
         function getMaxScroll() {
