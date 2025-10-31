@@ -9,7 +9,8 @@
   const dpr = $('#dpr');
   const wait = $('#wait');
 
-  const renderMode = $('#renderMode');
+  const renderModeA = $('#renderModeA');
+  const renderModeB = $('#renderModeB');
   const compareMode = $('#compareMode');
   const overlayMode = $('#overlayMode');
   const opacity = $('#opacity');
@@ -100,7 +101,14 @@
     if (p.has('w')) width.value = p.get('w');
     if (p.has('dpr')) dpr.value = p.get('dpr');
     if (p.has('wait')) wait.value = p.get('wait');
-    if (p.has('render')) renderMode.value = p.get('render');
+    // Per-side render modes, backward compatible with legacy 'render'
+    if (p.has('ra')) { const v = p.get('ra'); if (renderModeA) renderModeA.value = v; }
+    if (p.has('rb')) { const v = p.get('rb'); if (renderModeB) renderModeB.value = v; }
+    if (!p.has('ra') && !p.has('rb') && p.has('render')) {
+      const v = p.get('render');
+      if (renderModeA) renderModeA.value = v;
+      if (renderModeB) renderModeB.value = v;
+    }
     if (p.has('mode')) compareMode.value = p.get('mode');
     if (p.has('om')) overlayMode.value = p.get('om');
     if (p.has('opacity')) opacity.value = p.get('opacity');
@@ -132,7 +140,8 @@
     p.set('w', width.value);
     p.set('dpr', dpr.value);
     if (Number(wait.value) > 0) p.set('wait', String(wait.value));
-    p.set('render', renderMode.value);
+    if (renderModeA) p.set('ra', renderModeA.value);
+    if (renderModeB) p.set('rb', renderModeB.value);
     p.set('mode', compareMode.value);
     p.set('om', overlayMode.value);
     p.set('opacity', String(opacity.value));
@@ -208,7 +217,8 @@
 
   function updateModeControls() {
     const isOverlay = compareMode.value === 'overlay';
-    const useIframe = renderMode.value === 'iframe' || renderMode.value === 'proxy';
+    const bothIframes = (renderModeA && renderModeB) && 
+      ((renderModeA.value === 'iframe' || renderModeA.value === 'proxy') && (renderModeB.value === 'iframe' || renderModeB.value === 'proxy'));
     overlayModeField.style.display = isOverlay ? '' : 'none';
     overlayView.style.display = isOverlay ? '' : 'none';
     sbsView.style.display = isOverlay ? 'none' : '';
@@ -216,7 +226,7 @@
     const om = overlayMode.value;
     opacityField.style.display = isOverlay && om === 'onion' ? '' : 'none';
     swipeField.style.display = isOverlay && om === 'swipe' ? '' : 'none';
-    if (interactField) interactField.style.display = isOverlay && useIframe ? '' : 'none';
+    if (interactField) interactField.style.display = isOverlay && bothIframes ? '' : 'none';
     // Toggle inline offset controls
     if (offsetCtrlA && offsetCtrlB) {
       offsetCtrlA.style.display = isOverlay ? '' : 'none';
@@ -263,9 +273,10 @@
     const o1 = Number(offset1.value) || 0;
     const o2 = Number(offset2.value) || 0;
     const isOverlayMode = compareMode.value === 'overlay';
-    const isShot = renderMode.value === 'screenshot';
-    const sideAIsImage = isOverlayMode && (isShot || useUploadA);
-    const sideBIsImage = isOverlayMode && (isShot || useUploadB);
+    const ra = renderModeA ? renderModeA.value : 'proxy';
+    const rb = renderModeB ? renderModeB.value : 'proxy';
+    const sideAIsImage = isOverlayMode && ((ra === 'screenshot') || useUploadA);
+    const sideBIsImage = isOverlayMode && ((rb === 'screenshot') || useUploadB);
     const syA = sideAIsImage ? -screenshotScrollY : 0;
     const syB = sideBIsImage ? -screenshotScrollY : 0;
     const dx1 = sideAIsImage ? (Number(hOffset1) || 0) : 0;
@@ -322,6 +333,12 @@
     }
   }
 
+  function isValidUrl(u) {
+    if (!u || u.length < 4) return false;
+    // Must be http(s):// or file:// or absolute path
+    return /^https?:\/\/.+/.test(u) || /^file:\/\//.test(u) || u.startsWith('/') || /^[a-zA-Z]:\\/.test(u);
+  }
+
   function render() {
     writeParams();
     updateModeControls();
@@ -337,16 +354,22 @@
 
     const u1 = url1.value.trim();
     const u2 = url2.value.trim();
-    const mode = renderMode.value; // 'iframe', 'proxy', or 'screenshot'
-    const useIframe = mode === 'iframe' || mode === 'proxy';
+    const renderA = renderModeA ? renderModeA.value : 'proxy';
+    const renderB = renderModeB ? renderModeB.value : 'proxy';
+    
+    // Skip render if URLs are incomplete (being typed)
+    if (!isValidUrl(u1) && !isValidUrl(u2) && !useUploadA && !useUploadB) {
+      console.log('[DiffNator] Skipping render: no valid URLs or uploads');
+      return;
+    }
     
     // Clear any previous notices
     showNotice('');
 
     if (compareMode.value === 'overlay') {
       // Decide per-side representation (image vs iframe)
-      const sideAAsImage = (mode === 'screenshot') || useUploadA;
-      const sideBAsImage = (mode === 'screenshot') || useUploadB;
+      const sideAAsImage = (renderA === 'screenshot') || useUploadA;
+      const sideBAsImage = (renderB === 'screenshot') || useUploadB;
 
       // Display toggles
       img1.style.display = sideAAsImage ? 'block' : 'none';
@@ -371,38 +394,38 @@
           img1.onload = () => updateOverlayStyles();
           img1.src = u1 ? srcA : '';
         }
-      } else {
-        iframe1.setAttribute('scrolling', 'auto');
-        const srcA = toLiveIframeSrc(u1, mode) || 'about:blank';
-        iframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
-        iframe1.onload = () => { /* noop */ };
-        iframe1.src = srcA;
-      }
-
-      if (sideBAsImage) {
-        if (useUploadB && uploadUrlB) {
-          img2.onerror = null;
-          img2.onload = () => updateOverlayStyles();
-          img2.src = uploadUrlB;
         } else {
-          const srcB = buildShotUrl(u2);
-          img2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
-          img2.onload = () => updateOverlayStyles();
-          img2.src = u2 ? srcB : '';
+          iframe1.setAttribute('scrolling', 'auto');
+          const srcA = toLiveIframeSrc(u1, renderA) || 'about:blank';
+          iframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
+          iframe1.onload = () => { /* noop */ };
+          iframe1.src = srcA;
         }
-      } else {
-        iframe2.setAttribute('scrolling', 'auto');
-        const srcB = toLiveIframeSrc(u2, mode) || 'about:blank';
-        iframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
-        iframe2.onload = () => { /* noop */ };
-        iframe2.src = srcB;
-      }
 
-      // Reset virtual scroll when images are involved
-      if (sideAAsImage || sideBAsImage || mode === 'screenshot') {
-        screenshotScrollY = 0;
-        updateOverlayStyles();
-      }
+        if (sideBAsImage) {
+          if (useUploadB && uploadUrlB) {
+            img2.onerror = null;
+            img2.onload = () => updateOverlayStyles();
+            img2.src = uploadUrlB;
+          } else {
+            const srcB = buildShotUrl(u2);
+            img2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
+            img2.onload = () => updateOverlayStyles();
+            img2.src = u2 ? srcB : '';
+          }
+        } else {
+          iframe2.setAttribute('scrolling', 'auto');
+          const srcB = toLiveIframeSrc(u2, renderB) || 'about:blank';
+          iframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
+          iframe2.onload = () => { /* noop */ };
+          iframe2.src = srcB;
+        }
+
+        // Reset virtual scroll when images are involved
+        if (sideAAsImage || sideBAsImage) {
+          screenshotScrollY = 0;
+          updateOverlayStyles();
+        }
 
       // Toggle horizontal/zoom controls visibility based on images presence
       const hzA = offsetCtrlA ? offsetCtrlA.querySelector('.hz-controls') : null;
@@ -636,12 +659,12 @@
         col1.addEventListener('scroll', syncScroll1, { passive: true });
         col2.addEventListener('scroll', syncScroll2, { passive: true });
       }
-    } else if (compareMode.value === 'overlay') {
-      // Overlay: drive both iframes by messaging so their own scroll events/animations run
-      const mode = renderMode.value;
-      const useIframe = mode === 'iframe' || mode === 'proxy';
-      
-      if (useIframe) {
+      } else if (compareMode.value === 'overlay') {
+        // Overlay: mixed handling per-side
+        const renderA = renderModeA ? renderModeA.value : 'proxy';
+        const renderB = renderModeB ? renderModeB.value : 'proxy';
+        const bothIframes = (renderA === 'iframe' || renderA === 'proxy') && (renderB === 'iframe' || renderB === 'proxy');
+        {
         // Overlay always listens to wheel to guarantee scrolling even when the leader is underneath
         const ioVal = interactMode ? interactMode.value : 'a';
         const interactive = ioVal !== 'none';
@@ -652,11 +675,11 @@
           return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
         }
 
-        function onWheel(e) {
-          const dy = e.deltaY || 0;
-          e.preventDefault();
-          const aIsImg = (renderMode.value === 'screenshot') || useUploadA;
-          const bIsImg = (renderMode.value === 'screenshot') || useUploadB;
+          function onWheel(e) {
+            const dy = e.deltaY || 0;
+            e.preventDefault();
+            const aIsImg = (renderA === 'screenshot') || useUploadA;
+            const bIsImg = (renderB === 'screenshot') || useUploadB;
 
           // Drive iframe sides via messaging
           if (!aIsImg && iframe1.contentWindow) { try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {} }
@@ -690,8 +713,9 @@
             if (sourceId === 'B') { lastPosB = { x: d.x || 0, y: d.y || 0 }; }
           }
 
-          // If any side is an image, skip message coupling to avoid conflicts
-          if ((renderMode.value === 'screenshot') || useUploadA || useUploadB) return;
+            // If any side is an image, skip message coupling to avoid conflicts
+            const anyImage = (renderA === 'screenshot' || useUploadA) || (renderB === 'screenshot' || useUploadB);
+            if (anyImage) return;
           
           // If overlay is driving (interact=none), ignore iframe messages
           if (!interactive) return;
@@ -717,10 +741,12 @@
           if (d.type === 'SCROLL_POS') {
             return;
           }
-        }
-        if (overlayMessageHandler) window.removeEventListener('message', overlayMessageHandler);
-        overlayMessageHandler = onMessage;
-        window.addEventListener('message', onMessage);
+          }
+          if (overlayMessageHandler) window.removeEventListener('message', overlayMessageHandler);
+          if (bothIframes) {
+            overlayMessageHandler = onMessage;
+            window.addEventListener('message', onMessage);
+          }
         
         // Wait for iframes to load and set their heights to match content
         function getDocHeight(iframeEl) {
@@ -760,38 +786,33 @@
                 try { leaderFrame.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy: -1 }, '*'); } catch (_) {}
               }, 30);
             }
-          } catch (_) {}
-        }, 50);
-      } else {
-        // Overlay + Screenshot: emulate scrolling by translating images together
-        function getMaxScroll() {
-          const h1 = img1 ? img1.clientHeight : 0;
-          const h2 = img2 ? img2.clientHeight : 0;
-          const viewportH = overlayCanvas ? overlayCanvas.clientHeight : window.innerHeight;
-          return Math.max(0, Math.max(h1, h2) - viewportH);
+            } catch (_) {}
+          }, 50);
         }
-
-        function onWheel(e) {
-          e.preventDefault();
-          const dy = e.deltaY || 0;
-          const maxScroll = getMaxScroll();
-          screenshotScrollY = Math.max(0, Math.min(maxScroll, screenshotScrollY + dy));
-          updateOverlayStyles();
-        }
-
-        if (overlayWheelHandler) overlayView.removeEventListener('wheel', overlayWheelHandler);
-        overlayWheelHandler = onWheel;
-        overlayView.addEventListener('wheel', onWheel, { passive: false });
       }
     }
-  }
 
   function attachEvents() {
     let renderTimer = null;
     const requestRender = () => { if (renderTimer) clearTimeout(renderTimer); renderTimer = setTimeout(() => render(), 120); };
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, interactMode]
+    
+    // URL inputs need longer debounce to avoid rendering incomplete URLs while typing
+    let urlRenderTimer = null;
+    const requestRenderUrl = () => { 
+      if (urlRenderTimer) clearTimeout(urlRenderTimer); 
+      urlRenderTimer = setTimeout(() => render(), 1000); // 1 second delay for URL typing
+    };
+    
+    // URL fields use longer debounce on input, immediate on change (Enter/blur)
+    [url1, url2].forEach((el) => {
+      el.addEventListener('input', requestRenderUrl);
+      el.addEventListener('change', requestRender);
+    });
+    
+    // Other controls use normal debounce
+    [width, dpr, wait, renderModeA, renderModeB, compareMode, overlayMode, interactMode]
       .forEach((el) => el.addEventListener('change', requestRender));
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, interactMode]
+    [width, dpr, wait, renderModeA, renderModeB, compareMode, overlayMode, interactMode]
       .forEach((el) => el.addEventListener('input', requestRender));
     // Offsets update instantly without full re-render
     if (offset1) {

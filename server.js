@@ -97,7 +97,8 @@ app.get('/screenshot', async (req, res) => {
     // For file:// URLs, use simpler wait strategy as networkidle doesn't work well
     const isFileUrl = targetUrl.startsWith('file://');
     const waitStrategy = isFileUrl ? ['load', 'domcontentloaded'] : ['domcontentloaded', 'networkidle2'];
-    await page.goto(targetUrl, { waitUntil: waitStrategy, timeout: 45000 });
+    // Increase timeout to 90s for slow networks/firewalls
+    await page.goto(targetUrl, { waitUntil: waitStrategy, timeout: 90000 });
 
     // Always wait a bit for dynamic content, images, fonts, etc.
     await new Promise(resolve => setTimeout(resolve, waitMs));
@@ -152,7 +153,8 @@ app.get('/proxy', async (req, res) => {
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1'
-      }
+      },
+      signal: AbortSignal.timeout(60000) // 60s timeout for slow networks/firewalls
     });
 
     if (!response.ok) {

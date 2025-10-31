@@ -224,6 +224,53 @@ PORT=9000 npm start
 **Cause**: Images reference external CDNs with CORS restrictions.  
 **Solution**: The app automatically proxies external assets in Live modes. If issues persist, try Screenshot mode.
 
+### Windows: TimeoutError / ECONNREFUSED errors
+**Symptoms**: 
+- `TimeoutError: Navigation timeout of 45000 ms exceeded`
+- `ECONNREFUSED` errors when trying to proxy localhost
+- Puppeteer warnings about deprecated versions
+
+**Solutions**:
+1. **Update dependencies** (run in your project directory):
+```bash
+npm install puppeteer@latest cross-env --save
+```
+
+2. **Fix npm scripts for Windows** (already updated in latest version):
+   - The `stop` and `restart` commands now work cross-platform
+   - Use `npm start` instead of `npm run dev` on Windows
+
+3. **Firewall/Network issues**:
+   - Allow Node.js through Windows Firewall
+   - **If comparing localhost URLs**: Ensure the local server is actually running on that port
+     - DiffNator supports ANY localhost port (e.g., `http://localhost:8000`, `http://localhost:5173`, etc.)
+     - Test your local server independently first: open it in a normal browser
+     - Common ports: 3000 (React), 5173 (Vite), 8000 (Django), 4200 (Angular)
+   - Check antivirus isn't blocking Chromium/Puppeteer
+   - Try increasing timeouts in Settings (Wait: 3000-5000ms)
+
+4. **Test with external URLs first**:
+```
+URL A: https://example.com
+URL B: https://google.com
+```
+If this works, the issue is with your local server setup, not DiffNator.
+
+**Examples of localhost URLs that work:**
+- `http://localhost:3000` (React default)
+- `http://localhost:5173` (Vite default)
+- `http://localhost:8000` (Python/Django)
+- `http://localhost:4200` (Angular)
+- `http://127.0.0.1:ANY_PORT`
+
+The `ECONNREFUSED` error means there's no server listening on that port - start your local dev server first!
+
+5. **Windows-specific Node.js setup**:
+```bash
+# Run as Administrator if you see permission errors
+npm install -g windows-build-tools
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please:
