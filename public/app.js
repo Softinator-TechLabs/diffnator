@@ -57,6 +57,11 @@
   const interactField = $('#interactField');
   const notice = document.getElementById('notice');
 
+  // Virtual scroll offset used for overlay + screenshot mode
+  let screenshotScrollY = 0;
+  let overlayWheelHandler = null;
+  let overlayMessageHandler = null;
+
   function readParams() {
     const p = new URLSearchParams(location.search);
     if (p.has('u1')) url1.value = p.get('u1');
@@ -164,6 +169,7 @@
 
   function updateModeControls() {
     const isOverlay = compareMode.value === 'overlay';
+    const useIframe = renderMode.value === 'iframe' || renderMode.value === 'proxy';
     overlayModeField.style.display = isOverlay ? '' : 'none';
     overlayView.style.display = isOverlay ? '' : 'none';
     sbsView.style.display = isOverlay ? 'none' : '';
@@ -171,7 +177,7 @@
     const om = overlayMode.value;
     opacityField.style.display = isOverlay && om === 'onion' ? '' : 'none';
     swipeField.style.display = isOverlay && om === 'swipe' ? '' : 'none';
-    if (interactField) interactField.style.display = isOverlay ? '' : 'none';
+    if (interactField) interactField.style.display = isOverlay && useIframe ? '' : 'none';
     // Toggle inline offset controls
     if (offsetCtrlA && offsetCtrlB) {
       offsetCtrlA.style.display = isOverlay ? '' : 'none';
@@ -217,8 +223,10 @@
     // vertical offsets: apply as visual transforms so sync remains intact
     const o1 = Number(offset1.value) || 0;
     const o2 = Number(offset2.value) || 0;
-    wrap1.style.transform = `translateY(${o1}px)`;
-    wrap2.style.transform = `translateY(${o2}px)`;
+    const isOverlayScreenshot = compareMode.value === 'overlay' && renderMode.value === 'screenshot';
+    const sy = isOverlayScreenshot ? -screenshotScrollY : 0;
+    wrap1.style.transform = `translateY(${o1 + sy}px)`;
+    wrap2.style.transform = `translateY(${o2 + sy}px)`;
     if (offsetAVal) offsetAVal.textContent = `${o1} px`;
     if (offsetBVal) offsetBVal.textContent = `${o2} px`;
   }
@@ -366,6 +374,16 @@
         
         img1.src = u1 ? src1 : '';
         img2.src = u2 ? src2 : '';
+
+        // Reset virtual scroll and ensure viewport height
+        screenshotScrollY = 0;
+        overlayCanvas.style.height = '100vh';
+        updateOverlayStyles();
+
+        // Re-apply styles after images load to ensure correct sizing
+        const onImgLoad = () => updateOverlayStyles();
+        img1.onload = onImgLoad;
+        img2.onload = onImgLoad;
       }
     } else {
       // Side-by-side
@@ -544,7 +562,8 @@
           try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
         }
 
-        overlayView.removeEventListener('wheel', onWheel, { passive: false });
+        if (overlayWheelHandler) overlayView.removeEventListener('wheel', overlayWheelHandler);
+        overlayWheelHandler = onWheel;
         overlayView.addEventListener('wheel', onWheel, { passive: false });
 
         // Listen for messages from iframes (scroll position updates and wheel events)
@@ -575,7 +594,8 @@
             return;
           }
         }
-        window.removeEventListener('message', onMessage);
+        if (overlayMessageHandler) window.removeEventListener('message', overlayMessageHandler);
+        overlayMessageHandler = onMessage;
         window.addEventListener('message', onMessage);
         
         // Wait for iframes to load and set their heights to match content
@@ -602,6 +622,26 @@
         overlayCanvas.style.height = '100vh';
         wrap1.style.height = '100vh';
         wrap2.style.height = '100vh';
+      } else {
+        // Overlay + Screenshot: emulate scrolling by translating images together
+        function getMaxScroll() {
+          const h1 = img1 ? img1.clientHeight : 0;
+          const h2 = img2 ? img2.clientHeight : 0;
+          const viewportH = overlayCanvas ? overlayCanvas.clientHeight : window.innerHeight;
+          return Math.max(0, Math.max(h1, h2) - viewportH);
+        }
+
+        function onWheel(e) {
+          e.preventDefault();
+          const dy = e.deltaY || 0;
+          const maxScroll = getMaxScroll();
+          screenshotScrollY = Math.max(0, Math.min(maxScroll, screenshotScrollY + dy));
+          updateOverlayStyles();
+        }
+
+        if (overlayWheelHandler) overlayView.removeEventListener('wheel', overlayWheelHandler);
+        overlayWheelHandler = onWheel;
+        overlayView.addEventListener('wheel', onWheel, { passive: false });
       }
     }
   }
