@@ -163,6 +163,12 @@ footer a:hover {
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-md);
+  position: fixed;
+  right: var(--space-lg);
+  top: calc(var(--space-lg) + 52px);
+  z-index: 1300;
+  max-width: min(420px, 60vw);
+  box-shadow: var(--shadow-md);
 }
 
 .notice.error {
@@ -170,6 +176,9 @@ footer a:hover {
   color: var(--error);
   border-color: rgba(239, 68, 68, 0.3);
 }
+
+/* When used inside the drawer grid, make it span full width so it doesn't compress */
+.controls.toolbar #notice { grid-column: 1 / -1; }
 
 /* Controls Section */
 .controls { 

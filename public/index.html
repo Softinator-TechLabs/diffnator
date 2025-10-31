@@ -32,12 +32,22 @@
         </div>
       </div>
 
-      <div class="field render">
-        <label for="renderMode">Render</label>
-        <select id="renderMode">
+      <div class="field render small">
+        <label for="renderModeA">Render A</label>
+        <select id="renderModeA">
           <option value="iframe">Live (iframe)</option>
           <option value="proxy" selected>Live (proxy)</option>
           <option value="screenshot">Screenshot</option>
+          <option value="ctab">Chrome Tab (ext)</option>
+        </select>
+      </div>
+      <div class="field render small">
+        <label for="renderModeB">Render B</label>
+        <select id="renderModeB">
+          <option value="iframe">Live (iframe)</option>
+          <option value="proxy">Live (proxy)</option>
+          <option value="screenshot" selected>Screenshot</option>
+          <option value="ctab">Chrome Tab (ext)</option>
         </select>
       </div>
 
@@ -56,6 +66,14 @@
           <option value="swipe">Swipe</option>
           <option value="blend">Blend (difference)</option>
         </select>
+      </div>
+
+      <div class="field" id="ctabHelp" style="display:none; grid-column: span 12;">
+        <label>Chrome Tab (Extension)</label>
+        <div style="font-size:12px; color:#a1a1aa;">
+          Use the DiffNator Chrome extension to capture your logged-in tab and send it here.
+          After installing, open the secure tab and click the extension’s Capture (A/B) button.
+        </div>
       </div>
 
       <div class="field" id="opacityField">
@@ -122,10 +140,12 @@
         <div class="canvas" id="overlayCanvas" style="--canvas-width: 1440px; --canvas-height: 900px;">
           <div class="img-wrapper bottom" id="wrap1">
             <img id="img1" alt="First screenshot" />
+            <video id="video1" muted playsinline autoplay style="display:none;"></video>
             <iframe id="iframe1" style="display:none;" title="First page"></iframe>
           </div>
           <div class="img-wrapper top" id="wrap2">
             <img id="img2" alt="Second screenshot" />
+            <video id="video2" muted playsinline autoplay style="display:none;"></video>
             <iframe id="iframe2" style="display:none;" title="Second page"></iframe>
           </div>
           <div id="swipeHandle" class="swipe-handle" style="display:none;"></div>

@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "DiffNator Tab Capture",
+  "version": "0.1.0",
+  "description": "Capture the current Chrome tab and send screenshots to DiffNator (localhost:8080).",
+  "permissions": ["activeTab", "tabs", "storage", "tabCapture", "scripting"],
+  "host_permissions": ["http://localhost:8080/*"],
+  "action": {
+    "default_title": "Capture to DiffNator",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
+

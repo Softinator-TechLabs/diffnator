@@ -9,7 +9,8 @@
   const dpr = $('#dpr');
   const wait = $('#wait');
 
-  const renderMode = $('#renderMode');
+  const renderModeA = $('#renderModeA');
+  const renderModeB = $('#renderModeB');
   const compareMode = $('#compareMode');
   const overlayMode = $('#overlayMode');
   const opacity = $('#opacity');
@@ -32,6 +33,8 @@
   const wrap2 = $('#wrap2');
   const img1 = $('#img1');
   const img2 = $('#img2');
+  const video1 = $('#video1');
+  const video2 = $('#video2');
   const iframe1 = $('#iframe1');
   const iframe2 = $('#iframe2');
   const swipeHandle = $('#swipeHandle');
@@ -66,6 +69,7 @@
   const opacityField = $('#opacityField');
   const swipeField = $('#swipeField');
   const interactField = $('#interactField');
+  const ctabHelp = $('#ctabHelp');
   const notice = document.getElementById('notice');
   // Upload inputs
   const uploadA = $('#uploadA');
@@ -92,6 +96,10 @@
   // Drag state for image alignment
   let dragState = { active: false, side: null, startX: 0, startY: 0, baseHX: 0, baseV: 0 };
   let dragStartA = null, dragStartB = null, dragMove = null, dragEnd = null;
+  let ctabTimer = null;
+  let ctabLastA = null;
+  let ctabLastB = null;
+  let pcA = null, pcB = null;
 
   function readParams() {
     const p = new URLSearchParams(location.search);
@@ -100,7 +108,14 @@
     if (p.has('w')) width.value = p.get('w');
     if (p.has('dpr')) dpr.value = p.get('dpr');
     if (p.has('wait')) wait.value = p.get('wait');
-    if (p.has('render')) renderMode.value = p.get('render');
+    // Per-side render modes, backward compatible with legacy 'render'
+    if (p.has('ra')) { const v = p.get('ra'); if (renderModeA) renderModeA.value = v; }
+    if (p.has('rb')) { const v = p.get('rb'); if (renderModeB) renderModeB.value = v; }
+    if (!p.has('ra') && !p.has('rb') && p.has('render')) {
+      const v = p.get('render');
+      if (renderModeA) renderModeA.value = v;
+      if (renderModeB) renderModeB.value = v;
+    }
     if (p.has('mode')) compareMode.value = p.get('mode');
     if (p.has('om')) overlayMode.value = p.get('om');
     if (p.has('opacity')) opacity.value = p.get('opacity');
@@ -132,7 +147,8 @@
     p.set('w', width.value);
     p.set('dpr', dpr.value);
     if (Number(wait.value) > 0) p.set('wait', String(wait.value));
-    p.set('render', renderMode.value);
+    if (renderModeA) p.set('ra', renderModeA.value);
+    if (renderModeB) p.set('rb', renderModeB.value);
     p.set('mode', compareMode.value);
     p.set('om', overlayMode.value);
     p.set('opacity', String(opacity.value));
@@ -208,7 +224,8 @@
 
   function updateModeControls() {
     const isOverlay = compareMode.value === 'overlay';
-    const useIframe = renderMode.value === 'iframe' || renderMode.value === 'proxy';
+    const bothIframes = (renderModeA && renderModeB) &&
+      ((renderModeA.value === 'iframe' || renderModeA.value === 'proxy') && (renderModeB.value === 'iframe' || renderModeB.value === 'proxy'));
     overlayModeField.style.display = isOverlay ? '' : 'none';
     overlayView.style.display = isOverlay ? '' : 'none';
     sbsView.style.display = isOverlay ? 'none' : '';
@@ -216,7 +233,8 @@
     const om = overlayMode.value;
     opacityField.style.display = isOverlay && om === 'onion' ? '' : 'none';
     swipeField.style.display = isOverlay && om === 'swipe' ? '' : 'none';
-    if (interactField) interactField.style.display = isOverlay && useIframe ? '' : 'none';
+    if (interactField) interactField.style.display = isOverlay && bothIframes ? '' : 'none';
+    if (ctabHelp) ctabHelp.style.display = ((renderModeA && renderModeA.value === 'ctab') || (renderModeB && renderModeB.value === 'ctab')) ? '' : 'none';
     // Toggle inline offset controls
     if (offsetCtrlA && offsetCtrlB) {
       offsetCtrlA.style.display = isOverlay ? '' : 'none';
@@ -263,9 +281,10 @@
     const o1 = Number(offset1.value) || 0;
     const o2 = Number(offset2.value) || 0;
     const isOverlayMode = compareMode.value === 'overlay';
-    const isShot = renderMode.value === 'screenshot';
-    const sideAIsImage = isOverlayMode && (isShot || useUploadA);
-    const sideBIsImage = isOverlayMode && (isShot || useUploadB);
+    const ra = renderModeA ? renderModeA.value : 'proxy';
+    const rb = renderModeB ? renderModeB.value : 'proxy';
+    const sideAIsImage = isOverlayMode && ((ra === 'screenshot' || ra === 'ctab') || useUploadA);
+    const sideBIsImage = isOverlayMode && ((rb === 'screenshot' || rb === 'ctab') || useUploadB);
     const syA = sideAIsImage ? -screenshotScrollY : 0;
     const syB = sideBIsImage ? -screenshotScrollY : 0;
     const dx1 = sideAIsImage ? (Number(hOffset1) || 0) : 0;
@@ -278,6 +297,18 @@
     if (offsetBVal) offsetBVal.textContent = `${o2} px`;
     if (zoomAVal) zoomAVal.textContent = `${(zf1 * 100).toFixed(2)}%`;
     if (zoomBVal) zoomBVal.textContent = `${(zf2 * 100).toFixed(2)}%`;
+
+    // Keep Chrome Tab capture constraints in sync with viewport
+    try {
+      const viewportH = overlayCanvas ? overlayCanvas.clientHeight : window.innerHeight;
+      const viewportW = parseInt(width.value || '1440', 10) || 1440;
+      if (renderModeA && renderModeA.value === 'ctab') {
+        fetch('/api/extension/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ side: 'a', type: 'SET_CONSTRAINTS', w: viewportW, h: viewportH, fps: 15 }) }).catch(() => {});
+      }
+      if (renderModeB && renderModeB.value === 'ctab') {
+        fetch('/api/extension/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ side: 'b', type: 'SET_CONSTRAINTS', w: viewportW, h: viewportH, fps: 15 }) }).catch(() => {});
+      }
+    } catch (_) {}
   }
 
   // Apply initial starting positions inside iframes
@@ -337,22 +368,27 @@
 
     const u1 = url1.value.trim();
     const u2 = url2.value.trim();
-    const mode = renderMode.value; // 'iframe', 'proxy', or 'screenshot'
-    const useIframe = mode === 'iframe' || mode === 'proxy';
+    const renderA = renderModeA ? renderModeA.value : 'proxy';
+    const renderB = renderModeB ? renderModeB.value : 'proxy';
     
     // Clear any previous notices
     showNotice('');
 
     if (compareMode.value === 'overlay') {
       // Decide per-side representation (image vs iframe)
-      const sideAAsImage = (mode === 'screenshot') || useUploadA;
-      const sideBAsImage = (mode === 'screenshot') || useUploadB;
+      const sideAAsImage = (renderA === 'screenshot' || renderA === 'ctab') || useUploadA;
+      const sideBAsImage = (renderB === 'screenshot' || renderB === 'ctab') || useUploadB;
 
       // Display toggles
-      img1.style.display = sideAAsImage ? 'block' : 'none';
-      iframe1.style.display = sideAAsImage ? 'none' : 'block';
-      img2.style.display = sideBAsImage ? 'block' : 'none';
-      iframe2.style.display = sideBAsImage ? 'none' : 'block';
+      // Decide between video (ctab live), img (screenshot/upload), or iframe
+      const sideAAsVideo = (renderA === 'ctab');
+      const sideBAsVideo = (renderB === 'ctab');
+      if (video1) video1.style.display = sideAAsVideo ? 'block' : 'none';
+      if (video2) video2.style.display = sideBAsVideo ? 'block' : 'none';
+      img1.style.display = (!sideAAsVideo && sideAAsImage) ? 'block' : 'none';
+      iframe1.style.display = (!sideAAsVideo && !sideAAsImage) ? 'block' : 'none';
+      img2.style.display = (!sideBAsVideo && sideBAsImage) ? 'block' : 'none';
+      iframe2.style.display = (!sideBAsVideo && !sideBAsImage) ? 'block' : 'none';
 
       // Set sizes
       overlayCanvas.style.height = '100vh';
@@ -360,46 +396,46 @@
       wrap2.style.height = '100vh';
 
       // Sources per side
-      if (sideAAsImage) {
+      if (sideAAsImage && !sideAAsVideo) {
         if (useUploadA && uploadUrlA) {
           img1.onerror = null;
           img1.onload = () => updateOverlayStyles();
           img1.src = uploadUrlA;
         } else {
-          const srcA = buildShotUrl(u1);
+          const srcA = renderA === 'ctab' ? null : buildShotUrl(u1);
           img1.onerror = () => showNotice(`❌ Screenshot failed for: ${u1}. Server may be down.`, true);
           img1.onload = () => updateOverlayStyles();
-          img1.src = u1 ? srcA : '';
+          img1.src = renderA === 'ctab' ? '' : (u1 ? srcA : '');
         }
       } else {
         iframe1.setAttribute('scrolling', 'auto');
-        const srcA = toLiveIframeSrc(u1, mode) || 'about:blank';
+        const srcA = toLiveIframeSrc(u1, renderA) || 'about:blank';
         iframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
         iframe1.onload = () => { /* noop */ };
         iframe1.src = srcA;
       }
 
-      if (sideBAsImage) {
+      if (sideBAsImage && !sideBAsVideo) {
         if (useUploadB && uploadUrlB) {
           img2.onerror = null;
           img2.onload = () => updateOverlayStyles();
           img2.src = uploadUrlB;
         } else {
-          const srcB = buildShotUrl(u2);
+          const srcB = renderB === 'ctab' ? null : buildShotUrl(u2);
           img2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
           img2.onload = () => updateOverlayStyles();
-          img2.src = u2 ? srcB : '';
+          img2.src = renderB === 'ctab' ? '' : (u2 ? srcB : '');
         }
       } else {
         iframe2.setAttribute('scrolling', 'auto');
-        const srcB = toLiveIframeSrc(u2, mode) || 'about:blank';
+        const srcB = toLiveIframeSrc(u2, renderB) || 'about:blank';
         iframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
         iframe2.onload = () => { /* noop */ };
         iframe2.src = srcB;
       }
 
       // Reset virtual scroll when images are involved
-      if (sideAAsImage || sideBAsImage || mode === 'screenshot') {
+      if (sideAAsImage || sideBAsImage) {
         screenshotScrollY = 0;
         updateOverlayStyles();
       }
@@ -486,6 +522,108 @@
 
       setupDragForSide('a', !!sideAAsImage);
       setupDragForSide('b', !!sideBAsImage);
+
+      // Start/stop Chrome Tab live: WebRTC offer from page; extension answers
+      async function startCtabReceiver(which) {
+        try {
+          console.log(`[DiffNator] Starting Chrome Tab receiver for side ${which}`);
+          const pc = new RTCPeerConnection({ iceServers: [] });
+          const vEl = which === 'a' ? video1 : video2;
+          pc.ontrack = (ev) => { 
+            console.log(`[DiffNator] Received track for side ${which}`, ev.streams[0]);
+            if (vEl) {
+              vEl.srcObject = ev.streams[0];
+              vEl.play().catch(e => console.error('Video play error:', e));
+            }
+          };
+          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.onicecandidate = (ev) => {
+            if (ev && ev.candidate) {
+              console.log(`[DiffNator] Sending ICE candidate for side ${which}`);
+              fetch('/api/ctab/candidate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ side: which, from: 'page', candidate: ev.candidate })
+              }).catch(() => {});
+            }
+          };
+          pc.onconnectionstatechange = () => {
+            console.log(`[DiffNator] Connection state for side ${which}: ${pc.connectionState}`);
+          };
+          const off = await pc.createOffer({ offerToReceiveVideo: true });
+          await pc.setLocalDescription(off);
+          console.log(`[DiffNator] Created offer for side ${which}, posting to server`);
+          await fetch('/api/ctab/offer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ side: which, sdp: off.sdp }) });
+          // poll answer
+          let tries = 0;
+          const pollAns = async () => {
+            const r = await fetch(`/api/ctab/answer?side=${which}`).then((x) => x.json()).catch(() => null);
+            if (r && r.ok && r.sdp) {
+              console.log(`[DiffNator] Received answer for side ${which}`);
+              await pc.setRemoteDescription({ type: 'answer', sdp: r.sdp });
+              return true;
+            }
+            return false;
+          };
+          while (tries < 20) { 
+            if (await pollAns()) break; 
+            await new Promise(r => setTimeout(r, 500)); 
+            tries++; 
+          }
+          if (tries >= 20) {
+            console.warn(`[DiffNator] No answer received for side ${which} after 20 tries. Extension may not be running or tab not captured.`);
+            showNotice(`⚠️ Chrome Tab ${which.toUpperCase()}: No response from extension. Make sure extension is installed and you clicked "Capture URL ${which.toUpperCase()}" on the target tab.`, true);
+          }
+          // start polling for ext ICE candidates
+          const candTimer = setInterval(async () => {
+            try {
+              const rr = await fetch(`/api/ctab/candidate?side=${which}&to=page`).then((x) => x.json()).catch(() => null);
+              if (rr && rr.ok && Array.isArray(rr.candidates)) {
+                for (const c of rr.candidates) {
+                  try { await pc.addIceCandidate(c); } catch (_) {}
+                }
+              }
+            } catch (_) {}
+          }, 600);
+          pc.addEventListener('connectionstatechange', () => {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
+              clearInterval(candTimer);
+            }
+          });
+          return pc;
+        } catch (e) { 
+          console.error(`[DiffNator] Error starting Chrome Tab receiver for side ${which}:`, e);
+          return null; 
+        }
+      }
+
+      if (renderA === 'ctab') { if (pcA) { try { pcA.close(); } catch (_) {} } pcA = null; startCtabReceiver('a').then((pc) => pcA = pc); }
+      else { if (pcA) { try { pcA.close(); } catch (_) {} pcA = null; if (video1) video1.srcObject = null; } }
+
+      if (renderB === 'ctab') { if (pcB) { try { pcB.close(); } catch (_) {} } pcB = null; startCtabReceiver('b').then((pc) => pcB = pc); }
+      else { if (pcB) { try { pcB.close(); } catch (_) {} pcB = null; if (video2) video2.srcObject = null; } }
+
+      // Fallback still-capture polling for ctab if WebRTC not connected
+      if (renderA === 'ctab' || renderB === 'ctab') {
+        if (ctabTimer) clearInterval(ctabTimer);
+        const poll = async () => {
+          try {
+            const a = await fetch('/api/extension/latest?side=a').then(r => r.json()).catch(() => null);
+            const b = await fetch('/api/extension/latest?side=b').then(r => r.json()).catch(() => null);
+            if (a && a.ok && a.path && a.path !== ctabLastA) {
+              ctabLastA = a.path;
+              if (img1 && img1.style.display !== 'none') img1.src = a.path + `?ts=${Date.now()}`;
+            }
+            if (b && b.ok && b.path && b.path !== ctabLastB) {
+              ctabLastB = b.path;
+              if (img2 && img2.style.display !== 'none') img2.src = b.path + `?ts=${Date.now()}`;
+            }
+          } catch (_) {}
+        };
+        poll();
+        ctabTimer = setInterval(poll, 1500);
+      } else {
+        if (ctabTimer) { clearInterval(ctabTimer); ctabTimer = null; }
+      }
     } else {
       // Side-by-side
       if (useIframe) {
@@ -637,11 +775,11 @@
         col2.addEventListener('scroll', syncScroll2, { passive: true });
       }
     } else if (compareMode.value === 'overlay') {
-      // Overlay: drive both iframes by messaging so their own scroll events/animations run
-      const mode = renderMode.value;
-      const useIframe = mode === 'iframe' || mode === 'proxy';
-      
-      if (useIframe) {
+      // Overlay: mixed handling per-side
+      const renderA = renderModeA ? renderModeA.value : 'proxy';
+      const renderB = renderModeB ? renderModeB.value : 'proxy';
+      const bothIframes = (renderA === 'iframe' || renderA === 'proxy') && (renderB === 'iframe' || renderB === 'proxy');
+      {
         // Overlay always listens to wheel to guarantee scrolling even when the leader is underneath
         const ioVal = interactMode ? interactMode.value : 'a';
         const interactive = ioVal !== 'none';
@@ -655,8 +793,8 @@
         function onWheel(e) {
           const dy = e.deltaY || 0;
           e.preventDefault();
-          const aIsImg = (renderMode.value === 'screenshot') || useUploadA;
-          const bIsImg = (renderMode.value === 'screenshot') || useUploadB;
+          const aIsImg = (renderA === 'screenshot' || renderA === 'ctab') || useUploadA;
+          const bIsImg = (renderB === 'screenshot' || renderB === 'ctab') || useUploadB;
 
           // Drive iframe sides via messaging
           if (!aIsImg && iframe1.contentWindow) { try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {} }
@@ -671,6 +809,22 @@
             screenshotScrollY = Math.max(0, Math.min(maxScroll, screenshotScrollY + dy));
             updateOverlayStyles();
           }
+
+          // If any side is Chrome Tab, send scroll command to extension via server
+          try {
+            if (renderA === 'ctab') {
+              fetch('/api/extension/command', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ side: 'a', type: 'SCROLL_BY', dy })
+              }).catch(() => {});
+            }
+            if (renderB === 'ctab') {
+              fetch('/api/extension/command', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ side: 'b', type: 'SCROLL_BY', dy })
+              }).catch(() => {});
+            }
+          } catch (_) {}
           lastOverlayForwardAt = (window.performance && performance.now) ? performance.now() : Date.now();
         }
 
@@ -691,7 +845,8 @@
           }
 
           // If any side is an image, skip message coupling to avoid conflicts
-          if ((renderMode.value === 'screenshot') || useUploadA || useUploadB) return;
+          const anyImage = (renderA === 'screenshot' || renderA === 'ctab' || useUploadA) || (renderB === 'screenshot' || renderB === 'ctab' || useUploadB);
+          if (anyImage) return;
           
           // If overlay is driving (interact=none), ignore iframe messages
           if (!interactive) return;
@@ -719,8 +874,10 @@
           }
         }
         if (overlayMessageHandler) window.removeEventListener('message', overlayMessageHandler);
-        overlayMessageHandler = onMessage;
-        window.addEventListener('message', onMessage);
+        if (bothIframes) {
+          overlayMessageHandler = onMessage;
+          window.addEventListener('message', onMessage);
+        }
         
         // Wait for iframes to load and set their heights to match content
         function getDocHeight(iframeEl) {
@@ -762,26 +919,6 @@
             }
           } catch (_) {}
         }, 50);
-      } else {
-        // Overlay + Screenshot: emulate scrolling by translating images together
-        function getMaxScroll() {
-          const h1 = img1 ? img1.clientHeight : 0;
-          const h2 = img2 ? img2.clientHeight : 0;
-          const viewportH = overlayCanvas ? overlayCanvas.clientHeight : window.innerHeight;
-          return Math.max(0, Math.max(h1, h2) - viewportH);
-        }
-
-        function onWheel(e) {
-          e.preventDefault();
-          const dy = e.deltaY || 0;
-          const maxScroll = getMaxScroll();
-          screenshotScrollY = Math.max(0, Math.min(maxScroll, screenshotScrollY + dy));
-          updateOverlayStyles();
-        }
-
-        if (overlayWheelHandler) overlayView.removeEventListener('wheel', overlayWheelHandler);
-        overlayWheelHandler = onWheel;
-        overlayView.addEventListener('wheel', onWheel, { passive: false });
       }
     }
   }
@@ -789,9 +926,9 @@
   function attachEvents() {
     let renderTimer = null;
     const requestRender = () => { if (renderTimer) clearTimeout(renderTimer); renderTimer = setTimeout(() => render(), 120); };
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, interactMode]
+    [url1, url2, width, dpr, wait, renderModeA, renderModeB, compareMode, overlayMode, interactMode]
       .forEach((el) => el.addEventListener('change', requestRender));
-    [url1, url2, width, dpr, wait, renderMode, compareMode, overlayMode, interactMode]
+    [url1, url2, width, dpr, wait, renderModeA, renderModeB, compareMode, overlayMode, interactMode]
       .forEach((el) => el.addEventListener('input', requestRender));
     // Offsets update instantly without full re-render
     if (offset1) {

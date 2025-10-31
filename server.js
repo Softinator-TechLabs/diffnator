@@ -9,6 +9,9 @@ const puppeteer = require('puppeteer');
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 
+// JSON bodies for API endpoints
+app.use(express.json({ limit: '50mb' }));
+
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 // Health check endpoint
@@ -275,6 +278,197 @@ app.get('/proxy', async (req, res) => {
     console.error('proxy error:', err);
     res.status(500).type('text/plain').send(`Proxy error: ${err && err.message ? err.message : String(err)}`);
   }
+});
+
+// --- Chrome Extension integration: receive screenshots and serve latest ---
+const capturesDir = path.join(__dirname, 'public', 'captures');
+if (!fs.existsSync(capturesDir)) {
+  try { fs.mkdirSync(capturesDir, { recursive: true }); } catch (_) {}
+}
+const latestCaptureBySide = { a: null, b: null };
+const cmdQueue = { a: [], b: [] };
+const webrtcOffers = { a: null, b: null };
+const webrtcAnswers = { a: null, b: null };
+const ctabCandToExt = { a: [], b: [] }; // page -> ext
+const ctabCandToPage = { a: [], b: [] }; // ext -> page
+
+// CORS for extension endpoints
+app.options('/api/extension/*', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
+// POST body: { side: 'a'|'b', dataUrl: 'data:image/png;base64,...' }
+app.post('/api/extension/upload', async (req, res) => {
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    const sideRaw = String(req.body && req.body.side || '').toLowerCase();
+    const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+    const dataUrl = req.body && req.body.dataUrl;
+    if (!side || !dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+      res.status(400).json({ ok: false, error: 'Invalid side or dataUrl' });
+      return;
+    }
+    const m = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
+    if (!m) {
+      res.status(400).json({ ok: false, error: 'Invalid dataUrl format' });
+      return;
+    }
+    const mime = m[1] || 'image/png';
+    const ext = mime.includes('jpeg') ? 'jpg' : (mime.split('/')[1] || 'png');
+    const base64 = m[2];
+    const buf = Buffer.from(base64, 'base64');
+    const filename = `cap_${side}_${Date.now()}.${ext}`;
+    const filePath = path.join(capturesDir, filename);
+    await fs.promises.writeFile(filePath, buf);
+    const publicPath = `/captures/${filename}`;
+    latestCaptureBySide[side] = publicPath;
+    res.json({ ok: true, path: publicPath });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('extension upload error:', err);
+    res.status(500).json({ ok: false, error: 'Upload failed' });
+  }
+});
+
+// GET /api/extension/latest?side=a|b
+app.get('/api/extension/latest', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const sideRaw = String(req.query.side || '').toLowerCase();
+  const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+  if (!side) { res.status(400).json({ ok: false, error: 'Missing side' }); return; }
+  res.json({ ok: true, path: latestCaptureBySide[side] });
+});
+
+// Queue a control command for the extension (e.g., scroll by)
+// POST body: { side: 'a'|'b', type: 'SCROLL_BY', dy: number }
+app.post('/api/extension/command', (req, res) => {
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    const sideRaw = String(req.body && req.body.side || '').toLowerCase();
+    const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+    if (!side) { res.status(400).json({ ok: false, error: 'Missing side' }); return; }
+    const type = String(req.body && req.body.type || '').toUpperCase();
+    if (!type) { res.status(400).json({ ok: false, error: 'Missing type' }); return; }
+    const payload = req.body || {};
+    cmdQueue[side].push({ type, payload, ts: Date.now() });
+    res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('command enqueue error:', err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Extension long/short poll for next command
+// GET /api/extension/nextCommand?side=a|b
+app.get('/api/extension/nextCommand', (req, res) => {
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    const sideRaw = String(req.query.side || '').toLowerCase();
+    const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+    if (!side) { res.status(400).json({ ok: false, error: 'Missing side' }); return; }
+    const cmd = cmdQueue[side].shift() || null;
+    res.json({ ok: true, cmd });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('nextCommand error:', err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// --- Simple WebRTC signaling for Chrome Tab live stream ---
+// Page (receiver) posts offer to server
+app.post('/api/ctab/offer', (req, res) => {
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    const sideRaw = String(req.body && req.body.side || '').toLowerCase();
+    const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+    const sdp = req.body && req.body.sdp;
+    if (!side || !sdp) { res.status(400).json({ ok: false, error: 'Invalid offer' }); return; }
+    // eslint-disable-next-line no-console
+    console.log(`[Server] Received WebRTC offer from frontend for side ${side}`);
+    webrtcOffers[side] = sdp;
+    webrtcAnswers[side] = null; // reset previous
+    res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('ctab offer error:', err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Extension polls for offer
+app.get('/api/ctab/offer', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const sideRaw = String(req.query.side || '').toLowerCase();
+  const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+  if (!side) { res.status(400).json({ ok: false, error: 'Missing side' }); return; }
+  if (webrtcOffers[side]) {
+    // eslint-disable-next-line no-console
+    console.log(`[Server] Extension polling for offer on side ${side} - offer available`);
+  }
+  res.json({ ok: true, sdp: webrtcOffers[side] });
+});
+
+// Extension posts answer
+app.post('/api/ctab/answer', (req, res) => {
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    const sideRaw = String(req.body && req.body.side || '').toLowerCase();
+    const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+    const sdp = req.body && req.body.sdp;
+    if (!side || !sdp) { res.status(400).json({ ok: false, error: 'Invalid answer' }); return; }
+    webrtcAnswers[side] = sdp;
+    res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('ctab answer error:', err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Page polls for answer
+app.get('/api/ctab/answer', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const sideRaw = String(req.query.side || '').toLowerCase();
+  const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+  if (!side) { res.status(400).json({ ok: false, error: 'Missing side' }); return; }
+  res.json({ ok: true, sdp: webrtcAnswers[side] });
+});
+
+// Exchange ICE candidates
+// POST { side, from: 'page'|'ext', candidate }
+app.post('/api/ctab/candidate', (req, res) => {
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    const sideRaw = String(req.body && req.body.side || '').toLowerCase();
+    const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+    const from = String(req.body && req.body.from || '').toLowerCase();
+    const candidate = req.body && req.body.candidate;
+    if (!side || !candidate || (from !== 'page' && from !== 'ext')) { res.status(400).json({ ok: false }); return; }
+    if (from === 'page') ctabCandToExt[side].push(candidate);
+    else ctabCandToPage[side].push(candidate);
+    res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('candidate post error:', err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// GET /api/ctab/candidate?side=a|b&to=ext|page
+app.get('/api/ctab/candidate', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const sideRaw = String(req.query.side || '').toLowerCase();
+  const side = sideRaw === 'a' || sideRaw === 'b' ? sideRaw : null;
+  const to = String(req.query.to || '').toLowerCase();
+  if (!side || (to !== 'ext' && to !== 'page')) { res.status(400).json({ ok: false }); return; }
+  const list = to === 'ext' ? ctabCandToExt[side] : ctabCandToPage[side];
+  const out = list.splice(0, list.length);
+  res.json({ ok: true, candidates: out });
 });
 
 // Serve local files for LIVE iframe mode
