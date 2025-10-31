@@ -7,7 +7,7 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 8086;
 
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
@@ -437,7 +437,7 @@ app.get('/filefs/:encodedBase/*', async (req, res) => {
 
 const server = app.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`Local Diff Viewer running on http://localhost:${PORT}`);
+  console.log(`🔥 DiffNator running on http://localhost:${PORT}`);
 });
 
 async function gracefulShutdown() {

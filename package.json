@@ -9,8 +9,8 @@
     "dev:visible": "cross-env HEADLESS=false node server.js",
     "stop": "node -e \"require('child_process').exec(process.platform === 'win32' ? 'taskkill /F /IM node.exe /FI \\\"WINDOWTITLE eq DiffNator*\\\"' : 'pkill -f \\'node.*server.js\\' || true', () => {})\"",
     "restart": "npm run stop && node -e \"setTimeout(() => {}, 2000)\" && npm start",
-    "test": "echo 'No tests yet. Run npm start and test manually at http://localhost:8080'",
-    "health": "node -e \"require('http').get('http://localhost:8080/health', res => { let d=''; res.on('data', c => d+=c); res.on('end', () => console.log(d)); }).on('error', e => console.error(e));\""
+    "test": "echo 'No tests yet. Run npm start and test manually at http://localhost:8086'",
+    "health": "node -e \"require('http').get('http://localhost:8086/health', res => { let d=''; res.on('data', c => d+=c); res.on('end', () => console.log(d)); }).on('error', e => console.error(e));\""
   },
   "keywords": [
     "visual-testing",

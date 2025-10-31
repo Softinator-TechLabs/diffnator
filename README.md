@@ -51,7 +51,7 @@ npm install
 # 3. Start the server (includes web server + proxy)
 npm start
 
-# The app will be available at http://localhost:8080
+# The app will be available at http://localhost:8086
 ```
 
 **First-time setup**: The `npm install` will download Chromium (~170-250MB) for Puppeteer. This is normal and required for screenshot functionality.
@@ -131,7 +131,7 @@ PORT=9000 npm start
 ### Deep Linking
 Share comparisons by copying the URL:
 ```
-http://localhost:8080/?u1=https://example.com&u2=http://localhost:3000&w=1440&render=proxy&mode=sbs
+http://localhost:8086/?u1=https://example.com&u2=http://localhost:3000&w=1440&ra=proxy&rb=proxy&mode=sbs
 ```
 
 Parameters:
@@ -139,7 +139,7 @@ Parameters:
 - `w`: Viewport width (px)
 - `dpr`: Device pixel ratio (1, 1.5, 2, 3)
 - `wait`: Wait time before screenshot (ms)
-- `render`: Render mode (`iframe`, `proxy`, `screenshot`)
+- `ra` / `rb`: Render mode per URL (`iframe`, `proxy`, `screenshot`)
 - `mode`: Comparison mode (`overlay`, `sbs`)
 - `om`: Overlay mode (`onion`, `swipe`, `blend`)
 - `opacity`: Opacity percentage (0-100)
@@ -209,8 +209,8 @@ mode=overlay
 HEADLESS=false npm start
 ```
 
-### Port 8080 already in use
-**Cause**: Another service is using port 8080.  
+### Port already in use
+**Cause**: Another service is using the port (default: 8086).  
 **Solution**: Use a different port:
 ```bash
 PORT=9000 npm start
