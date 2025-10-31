@@ -17,11 +17,19 @@
       <div class="field url">
         <label for="url1">URL A</label>
         <input id="url1" type="text" placeholder="https://example.com or /path/to/file.html" value="https://example.com" />
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <input id="uploadA" type="file" accept="image/*" />
+          <button id="clearUploadA" type="button" class="primary" style="padding:6px 10px; font-size:12px;">Clear A</button>
+        </div>
       </div>
 
       <div class="field url">
         <label for="url2">URL B</label>
         <input id="url2" type="text" placeholder="https://example.com or /path/to/file.html" value="http://localhost:3000" />
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <input id="uploadB" type="file" accept="image/*" />
+          <button id="clearUploadB" type="button" class="primary" style="padding:6px 10px; font-size:12px;">Clear B</button>
+        </div>
       </div>
 
       <div class="field render">
@@ -106,6 +114,7 @@
       <div class="field align-end">
         <button id="refreshBtn" class="primary">Refresh</button>
       </div>
+      <div class="controls-hint">Tip: Scroll works better when mouse pointer is outside of the viewport.</div>
     </section>
 
     <section class="view">
@@ -124,11 +133,37 @@
         </div>
         <!-- Inline offset controls (overlay only) -->
         <div class="offset-controls left" id="offsetCtrlA" aria-label="Offset A" style="display:none;">
+          <div class="offset-title">URL A</div>
+          <div class="hz-controls">
+            <div class="row">
+              <button class="offset-btn" id="hoffALeft" title="Move URL A left">←</button>
+              <div style="width:8px;"></div>
+              <button class="offset-btn" id="hoffARight" title="Move URL A right">→</button>
+            </div>
+            <div class="row">
+              <button class="offset-btn" id="zoomAOut" title="Zoom out URL A">-</button>
+              <div class="offset-val" id="zoomAVal">100%</div>
+              <button class="offset-btn" id="zoomAIn" title="Zoom in URL A">+</button>
+            </div>
+          </div>
           <button class="offset-btn up" id="offsetAUp" title="Move URL A up">↑</button>
           <div class="offset-val" id="offsetAVal">0 px</div>
           <button class="offset-btn down" id="offsetADown" title="Move URL A down">↓</button>
         </div>
         <div class="offset-controls right" id="offsetCtrlB" aria-label="Offset B" style="display:none;">
+          <div class="offset-title">URL B</div>
+          <div class="hz-controls">
+            <div class="row">
+              <button class="offset-btn" id="hoffBLeft" title="Move URL B left">←</button>
+              <div style="width:8px;"></div>
+              <button class="offset-btn" id="hoffBRight" title="Move URL B right">→</button>
+            </div>
+            <div class="row">
+              <button class="offset-btn" id="zoomBOut" title="Zoom out URL B">-</button>
+              <div class="offset-val" id="zoomBVal">100%</div>
+              <button class="offset-btn" id="zoomBIn" title="Zoom in URL B">+</button>
+            </div>
+          </div>
           <button class="offset-btn up" id="offsetBUp" title="Move URL B up">↑</button>
           <div class="offset-val" id="offsetBVal">0 px</div>
           <button class="offset-btn down" id="offsetBDown" title="Move URL B down">↓</button>

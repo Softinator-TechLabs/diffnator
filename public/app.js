@@ -44,6 +44,17 @@
   const offsetBDown = $('#offsetBDown');
   const offsetAVal = $('#offsetAVal');
   const offsetBVal = $('#offsetBVal');
+  // New: horizontal/zoom controls
+  const hoffALeft = $('#hoffALeft');
+  const hoffARight = $('#hoffARight');
+  const hoffBLeft = $('#hoffBLeft');
+  const hoffBRight = $('#hoffBRight');
+  const zoomAIn = $('#zoomAIn');
+  const zoomAOut = $('#zoomAOut');
+  const zoomBIn = $('#zoomBIn');
+  const zoomBOut = $('#zoomBOut');
+  const zoomAVal = $('#zoomAVal');
+  const zoomBVal = $('#zoomBVal');
 
   const sbsView = $('#sbsView');
   const sbs1 = $('#sbs1');
@@ -56,6 +67,11 @@
   const swipeField = $('#swipeField');
   const interactField = $('#interactField');
   const notice = document.getElementById('notice');
+  // Upload inputs
+  const uploadA = $('#uploadA');
+  const uploadB = $('#uploadB');
+  const clearUploadA = $('#clearUploadA');
+  const clearUploadB = $('#clearUploadB');
 
   // Virtual scroll offset used for overlay + screenshot mode
   let screenshotScrollY = 0;
@@ -64,6 +80,18 @@
   let lastOverlayForwardAt = 0;
   let lastPosA = { x: 0, y: 0 };
   let lastPosB = { x: 0, y: 0 };
+  // Upload state and transforms
+  let useUploadA = false;
+  let useUploadB = false;
+  let uploadUrlA = '';
+  let uploadUrlB = '';
+  let hOffset1 = 0; // horizontal px for A
+  let hOffset2 = 0; // horizontal px for B
+  let zoom1 = 1; // scale for A
+  let zoom2 = 1; // scale for B
+  // Drag state for image alignment
+  let dragState = { active: false, side: null, startX: 0, startY: 0, baseHX: 0, baseV: 0 };
+  let dragStartA = null, dragStartB = null, dragMove = null, dragEnd = null;
 
   function readParams() {
     const p = new URLSearchParams(location.search);
@@ -79,6 +107,10 @@
     if (p.has('swipe')) swipe.value = p.get('swipe');
     if (p.has('off1')) offset1.value = p.get('off1');
     if (p.has('off2')) offset2.value = p.get('off2');
+    if (p.has('hx1')) hOffset1 = Number(p.get('hx1')) || 0;
+    if (p.has('hx2')) hOffset2 = Number(p.get('hx2')) || 0;
+    if (p.has('z1')) zoom1 = Math.max(0.1, Math.min(4, Number(p.get('z1')) || 1));
+    if (p.has('z2')) zoom2 = Math.max(0.1, Math.min(4, Number(p.get('z2')) || 1));
     // Optional deep link: start at CSS selector for each URL
     if (p.has('sa')) startSel1 = p.get('sa') || '';
     if (p.has('sb')) startSel2 = p.get('sb') || '';
@@ -107,6 +139,10 @@
     p.set('swipe', String(swipe.value));
     p.set('off1', String(offset1.value));
     p.set('off2', String(offset2.value));
+    p.set('hx1', String(hOffset1));
+    p.set('hx2', String(hOffset2));
+    p.set('z1', String(Number(zoom1.toFixed(2))));
+    p.set('z2', String(Number(zoom2.toFixed(2))));
     if (interactMode) p.set('io', interactMode.value);
     const newUrl = `${location.pathname}?${p.toString()}`;
     history.replaceState(null, '', newUrl);
@@ -226,12 +262,22 @@
     // vertical offsets: apply as visual transforms so sync remains intact
     const o1 = Number(offset1.value) || 0;
     const o2 = Number(offset2.value) || 0;
-    const isOverlayScreenshot = compareMode.value === 'overlay' && renderMode.value === 'screenshot';
-    const sy = isOverlayScreenshot ? -screenshotScrollY : 0;
-    wrap1.style.transform = `translateY(${o1 + sy}px)`;
-    wrap2.style.transform = `translateY(${o2 + sy}px)`;
+    const isOverlayMode = compareMode.value === 'overlay';
+    const isShot = renderMode.value === 'screenshot';
+    const sideAIsImage = isOverlayMode && (isShot || useUploadA);
+    const sideBIsImage = isOverlayMode && (isShot || useUploadB);
+    const syA = sideAIsImage ? -screenshotScrollY : 0;
+    const syB = sideBIsImage ? -screenshotScrollY : 0;
+    const dx1 = sideAIsImage ? (Number(hOffset1) || 0) : 0;
+    const dx2 = sideBIsImage ? (Number(hOffset2) || 0) : 0;
+    const zf1 = sideAIsImage ? (Number(zoom1) || 1) : 1;
+    const zf2 = sideBIsImage ? (Number(zoom2) || 1) : 1;
+    wrap1.style.transform = `translate(${dx1}px, ${o1 + syA}px) scale(${zf1})`;
+    wrap2.style.transform = `translate(${dx2}px, ${o2 + syB}px) scale(${zf2})`;
     if (offsetAVal) offsetAVal.textContent = `${o1} px`;
     if (offsetBVal) offsetBVal.textContent = `${o2} px`;
+    if (zoomAVal) zoomAVal.textContent = `${(zf1 * 100).toFixed(2)}%`;
+    if (zoomBVal) zoomBVal.textContent = `${(zf2 * 100).toFixed(2)}%`;
   }
 
   // Apply initial starting positions inside iframes
@@ -298,102 +344,148 @@
     showNotice('');
 
     if (compareMode.value === 'overlay') {
-      if (useIframe) {
-        // Show iframes, hide images
-        img1.style.display = 'none';
-        img2.style.display = 'none';
-        iframe1.style.display = 'block';
-        iframe2.style.display = 'block';
-        
-        // Allow internal scrolling (better for animations/parallax in pages)
-        iframe1.setAttribute('scrolling', 'auto');
-        iframe2.setAttribute('scrolling', 'auto');
-        
-        const src1 = toLiveIframeSrc(u1, mode) || 'about:blank';
-        const src2 = toLiveIframeSrc(u2, mode) || 'about:blank';
-        
-        // Add error handlers
-        iframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
-        iframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
-        
-        // Track load state to apply offsets only after both are ready
-        let loaded = { a: false, b: false };
-        let offsetApplied = false;
-        
-        const tryApply = () => {
-          if (loaded.a && loaded.b && !offsetApplied) {
-            offsetApplied = true;
-            // Wait a bit longer to ensure injected scripts are ready
-            setTimeout(() => {
-              console.log('[Offset] Both iframes loaded, applying offsets...');
-              applyInitialStarts();
-            }, 600);
-          }
-        };
-        
-        // Check if iframes are already loaded (from previous render)
-        const checkIfReady = () => {
-          try {
-            if (iframe1.contentWindow && iframe1.contentWindow.document && iframe1.contentWindow.document.readyState === 'complete') {
-              loaded.a = true;
-            }
-            if (iframe2.contentWindow && iframe2.contentWindow.document && iframe2.contentWindow.document.readyState === 'complete') {
-              loaded.b = true;
-            }
-            tryApply();
-          } catch(_) {}
-        };
-        
-        // Set up load handlers
-        iframe1.onload = () => { 
-          console.log('[Offset] iframe1 loaded');
-          loaded.a = true; 
-          tryApply(); 
-        };
-        iframe2.onload = () => { 
-          console.log('[Offset] iframe2 loaded');
-          loaded.b = true; 
-          tryApply(); 
-        };
-        
-        // Set sources
-        iframe1.src = src1;
-        iframe2.src = src2;
-        
-        // Check immediately if already loaded
-        setTimeout(checkIfReady, 100);
+      // Decide per-side representation (image vs iframe)
+      const sideAAsImage = (mode === 'screenshot') || useUploadA;
+      const sideBAsImage = (mode === 'screenshot') || useUploadB;
+
+      // Display toggles
+      img1.style.display = sideAAsImage ? 'block' : 'none';
+      iframe1.style.display = sideAAsImage ? 'none' : 'block';
+      img2.style.display = sideBAsImage ? 'block' : 'none';
+      iframe2.style.display = sideBAsImage ? 'none' : 'block';
+
+      // Set sizes
+      overlayCanvas.style.height = '100vh';
+      wrap1.style.height = '100vh';
+      wrap2.style.height = '100vh';
+
+      // Sources per side
+      if (sideAAsImage) {
+        if (useUploadA && uploadUrlA) {
+          img1.onerror = null;
+          img1.onload = () => updateOverlayStyles();
+          img1.src = uploadUrlA;
+        } else {
+          const srcA = buildShotUrl(u1);
+          img1.onerror = () => showNotice(`❌ Screenshot failed for: ${u1}. Server may be down.`, true);
+          img1.onload = () => updateOverlayStyles();
+          img1.src = u1 ? srcA : '';
+        }
       } else {
-        // Show images (screenshots), hide iframes
-        iframe1.style.display = 'none';
-        iframe2.style.display = 'none';
-        img1.style.display = 'block';
-        img2.style.display = 'block';
-        const src1 = buildShotUrl(u1);
-        const src2 = buildShotUrl(u2);
-        
-        // Add error handlers for screenshots
-        img1.onerror = () => showNotice(`❌ Screenshot failed for: ${u1}. Server may be down.`, true);
-        img2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
-        
-        // Show loading notice until both images load or error
-        showNotice('⏳ Loading screenshots...');
-        let shotLoaded = { a: false, b: false };
-        const maybeClear = () => { if (shotLoaded.a && shotLoaded.b) showNotice(''); };
-        img1.onload = () => { shotLoaded.a = true; updateOverlayStyles(); maybeClear(); };
-        img2.onload = () => { shotLoaded.b = true; updateOverlayStyles(); maybeClear(); };
-        img1.onerror = () => { shotLoaded.a = true; maybeClear(); };
-        img2.onerror = () => { shotLoaded.b = true; maybeClear(); };
-
-        img1.src = u1 ? src1 : '';
-        img2.src = u2 ? src2 : '';
-
-        // Reset virtual scroll and ensure viewport height
-        screenshotScrollY = 0;
-        overlayCanvas.style.height = '100vh';
-        updateOverlayStyles();
-
-        // note: onload already set above
+        iframe1.setAttribute('scrolling', 'auto');
+        const srcA = toLiveIframeSrc(u1, mode) || 'about:blank';
+        iframe1.onerror = () => showNotice(`❌ Failed to load: ${u1}`, true);
+        iframe1.onload = () => { /* noop */ };
+        iframe1.src = srcA;
       }
+
+      if (sideBAsImage) {
+        if (useUploadB && uploadUrlB) {
+          img2.onerror = null;
+          img2.onload = () => updateOverlayStyles();
+          img2.src = uploadUrlB;
+        } else {
+          const srcB = buildShotUrl(u2);
+          img2.onerror = () => showNotice(`❌ Screenshot failed for: ${u2}. Server may be down.`, true);
+          img2.onload = () => updateOverlayStyles();
+          img2.src = u2 ? srcB : '';
+        }
+      } else {
+        iframe2.setAttribute('scrolling', 'auto');
+        const srcB = toLiveIframeSrc(u2, mode) || 'about:blank';
+        iframe2.onerror = () => showNotice(`❌ Failed to load: ${u2}`, true);
+        iframe2.onload = () => { /* noop */ };
+        iframe2.src = srcB;
+      }
+
+      // Reset virtual scroll when images are involved
+      if (sideAAsImage || sideBAsImage || mode === 'screenshot') {
+        screenshotScrollY = 0;
+        updateOverlayStyles();
+      }
+
+      // Toggle horizontal/zoom controls visibility based on images presence
+      const hzA = offsetCtrlA ? offsetCtrlA.querySelector('.hz-controls') : null;
+      const hzB = offsetCtrlB ? offsetCtrlB.querySelector('.hz-controls') : null;
+      if (hzA) hzA.style.display = sideAAsImage ? '' : 'none';
+      if (hzB) hzB.style.display = sideBAsImage ? '' : 'none';
+
+      // Attach drag to images to adjust offsets (only when side is image)
+      function setupDragForSide(which, enabled) {
+        const imgEl = which === 'a' ? img1 : img2;
+        if (!imgEl) return;
+        // prevent default browser drag image ghost
+        imgEl.addEventListener('dragstart', (ev) => { ev.preventDefault(); });
+        const startHandler = (ev) => {
+          if (!enabled) return;
+          ev.preventDefault();
+          const isTouch = ev.type === 'touchstart';
+          const pt = isTouch ? ev.touches[0] : ev;
+          dragState.active = true;
+          dragState.side = which;
+          dragState.startX = pt.clientX;
+          dragState.startY = pt.clientY;
+          dragState.baseHX = which === 'a' ? (Number(hOffset1) || 0) : (Number(hOffset2) || 0);
+          dragState.baseV = which === 'a' ? (Number(offset1.value) || 0) : (Number(offset2.value) || 0);
+          document.body.style.cursor = 'grabbing';
+        };
+        const moveHandler = (ev) => {
+          if (!dragState.active) return;
+          const isTouch = ev.type === 'touchmove';
+          const pt = isTouch ? ev.touches[0] : ev;
+          const dx = pt.clientX - dragState.startX;
+          const dy = pt.clientY - dragState.startY;
+          if (dragState.side === 'a') {
+            hOffset1 = dragState.baseHX + dx;
+            offset1.value = String(dragState.baseV + dy);
+          } else {
+            hOffset2 = dragState.baseHX + dx;
+            offset2.value = String(dragState.baseV + dy);
+          }
+          updateOverlayStyles();
+        };
+        const endHandler = () => {
+          if (!dragState.active) return;
+          dragState.active = false;
+          dragState.side = null;
+          document.body.style.cursor = '';
+          writeParams();
+        };
+        // Remove previous listeners if any
+        if (which === 'a' && dragStartA) {
+          img1.removeEventListener('mousedown', dragStartA);
+          img1.removeEventListener('touchstart', dragStartA);
+        }
+        if (which === 'b' && dragStartB) {
+          img2.removeEventListener('mousedown', dragStartB);
+          img2.removeEventListener('touchstart', dragStartB);
+        }
+        // Set new handlers and attach
+        if (which === 'a') dragStartA = startHandler; else dragStartB = startHandler;
+        imgEl.addEventListener('mousedown', startHandler);
+        imgEl.addEventListener('touchstart', startHandler, { passive: false });
+        if (dragMove) {
+          window.removeEventListener('mousemove', dragMove);
+          window.removeEventListener('touchmove', dragMove);
+        }
+        if (dragEnd) {
+          window.removeEventListener('mouseup', dragEnd);
+          window.removeEventListener('mouseleave', dragEnd);
+          window.removeEventListener('touchend', dragEnd);
+          window.removeEventListener('touchcancel', dragEnd);
+        }
+        dragMove = moveHandler;
+        dragEnd = endHandler;
+        window.addEventListener('mousemove', moveHandler);
+        window.addEventListener('touchmove', moveHandler, { passive: false });
+        window.addEventListener('mouseup', endHandler);
+        window.addEventListener('mouseleave', endHandler);
+        window.addEventListener('touchend', endHandler);
+        window.addEventListener('touchcancel', endHandler);
+      }
+
+      setupDragForSide('a', !!sideAAsImage);
+      setupDragForSide('b', !!sideBAsImage);
     } else {
       // Side-by-side
       if (useIframe) {
@@ -561,13 +653,24 @@
         }
 
         function onWheel(e) {
-          if (!iframe1.contentWindow || !iframe2.contentWindow) return;
           const dy = e.deltaY || 0;
-
-          // Always drive both via messaging to avoid edge cases when switching interact leader
           e.preventDefault();
-          try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
-          try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {}
+          const aIsImg = (renderMode.value === 'screenshot') || useUploadA;
+          const bIsImg = (renderMode.value === 'screenshot') || useUploadB;
+
+          // Drive iframe sides via messaging
+          if (!aIsImg && iframe1.contentWindow) { try { iframe1.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {} }
+          if (!bIsImg && iframe2.contentWindow) { try { iframe2.contentWindow.postMessage({ type: 'SYNC_SCROLL_BY', dy }, '*'); } catch (_) {} }
+
+          // Drive image sides via virtual scroll
+          if (aIsImg || bIsImg) {
+            const viewportH = overlayCanvas ? overlayCanvas.clientHeight : window.innerHeight;
+            const h1 = aIsImg && img1 ? img1.clientHeight : 0;
+            const h2 = bIsImg && img2 ? img2.clientHeight : 0;
+            const maxScroll = Math.max(0, Math.max(h1, h2) - viewportH);
+            screenshotScrollY = Math.max(0, Math.min(maxScroll, screenshotScrollY + dy));
+            updateOverlayStyles();
+          }
           lastOverlayForwardAt = (window.performance && performance.now) ? performance.now() : Date.now();
         }
 
@@ -586,6 +689,9 @@
             if (sourceId === 'A') { lastPosA = { x: d.x || 0, y: d.y || 0 }; }
             if (sourceId === 'B') { lastPosB = { x: d.x || 0, y: d.y || 0 }; }
           }
+
+          // If any side is an image, skip message coupling to avoid conflicts
+          if ((renderMode.value === 'screenshot') || useUploadA || useUploadB) return;
           
           // If overlay is driving (interact=none), ignore iframe messages
           if (!interactive) return;
@@ -740,6 +846,90 @@
     addHoldRepeat(offsetBDown, 'b', step);
     [opacity, swipe].forEach((el) => el.addEventListener('input', () => { updateOverlayStyles(); writeParams(); }));
     refreshBtn.addEventListener('click', (e) => { e.preventDefault(); requestRender(); });
+
+    // Horizontal offset + Zoom controls
+    function bumpHOffset(which, delta) {
+      if (which === 'a') { hOffset1 = (Number(hOffset1) || 0) + delta; }
+      else { hOffset2 = (Number(hOffset2) || 0) + delta; }
+      updateOverlayStyles();
+      writeParams();
+    }
+    function bumpZoom(which, delta) {
+      if (which === 'a') { zoom1 = Math.max(0.1, Math.min(4, (Number(zoom1) || 1) + delta)); }
+      else { zoom2 = Math.max(0.1, Math.min(4, (Number(zoom2) || 1) + delta)); }
+      updateOverlayStyles();
+      writeParams();
+    }
+    const hStep = 1;
+    const zStep = 0.0005; // 0.05%
+    if (hoffALeft) hoffALeft.addEventListener('click', () => bumpHOffset('a', -hStep));
+    if (hoffARight) hoffARight.addEventListener('click', () => bumpHOffset('a', hStep));
+    if (hoffBLeft) hoffBLeft.addEventListener('click', () => bumpHOffset('b', -hStep));
+    if (hoffBRight) hoffBRight.addEventListener('click', () => bumpHOffset('b', hStep));
+    if (zoomAOut) zoomAOut.addEventListener('click', () => bumpZoom('a', -zStep));
+    if (zoomAIn) zoomAIn.addEventListener('click', () => bumpZoom('a', zStep));
+    if (zoomBOut) zoomBOut.addEventListener('click', () => bumpZoom('b', -zStep));
+    if (zoomBIn) zoomBIn.addEventListener('click', () => bumpZoom('b', zStep));
+
+    // Hold-repeat for horizontal/zoom
+    function addHoldRepeatFn(btn, fn) {
+      if (!btn) return;
+      let holdTimer = null;
+      let repeatTimer = null;
+      const start = (e) => {
+        e.preventDefault();
+        fn();
+        holdTimer = setTimeout(() => {
+          repeatTimer = setInterval(fn, 16);
+        }, 200);
+      };
+      const stop = () => {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
+      };
+      btn.addEventListener('mousedown', start);
+      btn.addEventListener('touchstart', start, { passive: false });
+      window.addEventListener('mouseup', stop);
+      window.addEventListener('mouseleave', stop);
+      window.addEventListener('touchend', stop);
+      window.addEventListener('touchcancel', stop);
+    }
+    addHoldRepeatFn(hoffALeft, () => bumpHOffset('a', -hStep));
+    addHoldRepeatFn(hoffARight, () => bumpHOffset('a', hStep));
+    addHoldRepeatFn(hoffBLeft, () => bumpHOffset('b', -hStep));
+    addHoldRepeatFn(hoffBRight, () => bumpHOffset('b', hStep));
+    addHoldRepeatFn(zoomAOut, () => bumpZoom('a', -zStep));
+    addHoldRepeatFn(zoomAIn, () => bumpZoom('a', zStep));
+    addHoldRepeatFn(zoomBOut, () => bumpZoom('b', -zStep));
+    addHoldRepeatFn(zoomBIn, () => bumpZoom('b', zStep));
+
+    // Upload handling
+    if (uploadA) uploadA.addEventListener('change', (e) => {
+      const f = uploadA.files && uploadA.files[0];
+      if (!f) return;
+      if (uploadUrlA) try { URL.revokeObjectURL(uploadUrlA); } catch (_) {}
+      uploadUrlA = URL.createObjectURL(f);
+      useUploadA = true;
+      requestRender();
+    });
+    if (uploadB) uploadB.addEventListener('change', (e) => {
+      const f = uploadB.files && uploadB.files[0];
+      if (!f) return;
+      if (uploadUrlB) try { URL.revokeObjectURL(uploadUrlB); } catch (_) {}
+      uploadUrlB = URL.createObjectURL(f);
+      useUploadB = true;
+      requestRender();
+    });
+    if (clearUploadA) clearUploadA.addEventListener('click', () => {
+      if (uploadUrlA) { try { URL.revokeObjectURL(uploadUrlA); } catch (_) {} uploadUrlA = ''; }
+      useUploadA = false;
+      requestRender();
+    });
+    if (clearUploadB) clearUploadB.addEventListener('click', () => {
+      if (uploadUrlB) { try { URL.revokeObjectURL(uploadUrlB); } catch (_) {} uploadUrlB = ''; }
+      useUploadB = false;
+      requestRender();
+    });
 
     // Drawer toggle (burger/close)
     function updateDrawerButton() {

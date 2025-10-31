@@ -201,6 +201,13 @@ footer a:hover {
   box-shadow: var(--shadow-md);
   border: none; /* remove borders */
 }
+/* Drawer hint */
+.controls-hint {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
 
 .controls.toolbar .field { display: block; }
 .controls.toolbar .field.url { grid-column: span 6; }
@@ -390,6 +397,7 @@ input[type="range"]::-moz-range-thumb {
   grid-area: content;
   width: 100%; 
   pointer-events: none;
+  transform-origin: top left;
 }
 
 .img-wrapper img,
@@ -450,6 +458,10 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12px; 
   color: var(--text-secondary);
 }
+
+.offset-controls .hz-controls { display: flex; flex-direction: column; gap: 6px; }
+.offset-controls .hz-controls .row { display: flex; align-items: center; gap: 6px; }
+.offset-controls .offset-title { font-size: 11px; color: var(--text-secondary); }
 
 .img-wrapper img { 
   object-fit: contain; 
